@@ -27,21 +27,13 @@
 
 /* ─── Reset ─────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html {
-  scroll-behavior: smooth;
-  font-size: 16px;
-  height: 100%;
-  overflow-y: auto !important;
-}
-
+html { scroll-behavior: smooth; font-size: 16px; }
 body {
   font-family: var(--font-sans);
   background: var(--cream);
   color: var(--charcoal);
   line-height: 1.6;
-  min-height: 100%;
   overflow-x: hidden;
-  overflow-y: auto !important;
 }
 a { color: inherit; text-decoration: none; }
 img { max-width: 100%; }
@@ -267,8 +259,10 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
 a.res-chip:hover { background: rgba(255,255,255,0.25); }
 
 /* ─── Sticky day indicator ───────────────────────────────── */
-.day-sticky-indicator {
-  position: sticky;
+.global-day-sticky {
+  position: fixed;
+  left: 0;
+  right: 0;
   top: 60px; /* below navbar; below banner on desktop */
   z-index: 80;
   background: var(--day-accent, #2E6B8A);
@@ -281,6 +275,7 @@ a.res-chip:hover { background: rgba(255,255,255,0.25); }
   font-weight: 600;
   letter-spacing: 0.02em;
   box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  display: none;
 }
 .dsi-emoji { font-size: 1rem; }
 .dsi-label { flex: 1; }
@@ -288,7 +283,7 @@ a.res-chip:hover { background: rgba(255,255,255,0.25); }
 
 /* On desktop, push below the checklist banner (~40px) */
 @media (min-width: 641px) {
-  .day-sticky-indicator { top: 100px; }
+  .global-day-sticky { top: 100px; }
 }
 
 /* ─── Main & Day sections ───────────────────────────────── */
@@ -1196,7 +1191,7 @@ a.res-chip:hover { background: rgba(255,255,255,0.25); }
   .history-diff { flex-direction: column; }
   .diff-arrow { display: none; }
   .event-photo-wrap { height: 130px; }
-  .day-sticky-indicator { top: 60px; }
+  .global-day-sticky { top: 60px; }
 }
 
 /* ─── Nickname modal ─────────────────────────────────────── */
@@ -1311,8 +1306,3 @@ a.res-chip:hover { background: rgba(255,255,255,0.25); }
 
 /* ─── Selection ──────────────────────────────────────────── */
 ::selection { background: rgba(30,77,107,0.2); }
-/* Scroll safety fallback */
-main.main,
-#daysContainer {
-  overflow: visible !important;
-}
