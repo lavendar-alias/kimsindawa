@@ -66,11 +66,6 @@ async function loadCommentsForDay(dayId) {
     });
   } else {
     // localStorage fallback
-    const stored = localStorage.getItem('kims_comments_' + dayId);
-    if (stored) {
-      const data = JSON.parse(stored);
-      Object.assign(commentsCache, data);
-    }
     const data = getLocalComments(dayId);
     Object.assign(commentsCache, data);
   }
@@ -98,7 +93,10 @@ function renderInlineComments(eventId) {
   const comments = commentsCache[eventId] || [];
   const topLevel = comments.filter(c => !c.parent_id);
   const replies  = comments.filter(c =>  c.parent_id);
-@@ -64,53 +100,66 @@ function renderInlineComments(eventId) {
+
+  // ── Comment list ──
+  if (topLevel.length === 0) {
+    listEl.innerHTML = `<p class="no-comments-inline">No comments yet — be the first! 👇</p>`;
   } else {
     listEl.innerHTML = topLevel.map(c => renderInlineComment(c, replies, eventId)).join('');
   }
@@ -124,9 +122,6 @@ function renderInlineComments(eventId) {
       </div>`;
   } else {
     formEl.innerHTML = `
-      <div class="inline-login-prompt">
-        <p>Enter a name to leave a comment.</p>
-        <button class="btn-enter-name" onclick="openAuthModal()">Enter my name ✏️</button>
       <div class="inline-comment-form" id="guest-comment-form-${eventId}">
         <div class="inline-form-avatar">?</div>
         <div class="inline-form-right">
@@ -168,7 +163,18 @@ function renderInlineComment(comment, allReplies, eventId) {
         <span class="ic-time" title="${date.toLocaleString()}">${timeStr}</span>
       </div>
       <p class="ic-body">${escapeHtml(comment.content)}</p>
-@@ -129,158 +178,201 @@ function renderReplyComment(reply) {
+      ${repliesHtml}
+      <button class="ic-reply-btn" onclick="showReplyForm('${comment.id}', '${eventId}', '${escapeHtml(comment.user_name).replace(/'/g,"\\'")}')">
+        ↩ Reply
+      </button>
+      <div class="reply-form-slot" id="reply-slot-${comment.id}"></div>
+    </div>`;
+}
+
+function renderReplyComment(reply) {
+  const date = new Date(reply.created_at);
+  return `
+    <div class="reply-card">
       <div class="ic-header">
         <span class="ic-avatar small">${getInitials(reply.user_name)}</span>
         <span class="ic-name">${escapeHtml(reply.user_name)}</span>
@@ -194,19 +200,6 @@ function showReplyForm(parentId, eventId, parentAuthor) {
   }
 
   if (!currentUser) {
-    openAuthModal();
-    return;
-  }
-
-  slot.innerHTML = `
-    <div class="reply-form">
-      <div class="inline-form-avatar small">${getInitials(currentUser.name)}</div>
-      <div class="inline-form-right">
-        <textarea class="inline-comment-input small" id="reply-text-${parentId}"
-                  placeholder="Replying to ${escapeHtml(parentAuthor)}…" rows="2"></textarea>
-        <div class="inline-form-actions">
-          <button class="btn-post-comment small" onclick="submitReply('${parentId}', '${eventId}')">Reply</button>
-          <button class="btn-cancel-reply" onclick="document.getElementById('reply-slot-${parentId}').innerHTML=''">Cancel</button>
     slot.innerHTML = `
       <div class="reply-form">
         <div class="inline-form-avatar small">?</div>
@@ -219,8 +212,6 @@ function showReplyForm(parentId, eventId, parentAuthor) {
             <button class="btn-cancel-reply" onclick="document.getElementById('reply-slot-${parentId}').innerHTML=''">Cancel</button>
           </div>
         </div>
-      </div>
-    </div>`;
       </div>`;
   } else {
     slot.innerHTML = `
@@ -253,7 +244,6 @@ async function submitInlineCommentWithName(eventId) {
 }
 
 async function submitInlineComment(eventId) {
-  if (!currentUser) { openAuthModal(); return; }
   if (!currentUser) {
     const nameInput = document.getElementById('inline-name-' + eventId);
     if (!ensureCurrentUserFromName(nameInput?.value)) {
@@ -296,7 +286,6 @@ async function submitReplyWithName(parentId, eventId) {
 }
 
 async function submitReply(parentId, eventId) {
-  if (!currentUser) { openAuthModal(); return; }
   if (!currentUser) {
     const nameInput = document.getElementById('reply-name-' + parentId);
     if (!ensureCurrentUserFromName(nameInput?.value)) {
@@ -354,8 +343,6 @@ async function _saveComment({ eventId, dayId, content, type, parentId }) {
 
     if (error) {
       console.error('Comment save error:', error);
-      showToast('Could not save — check Supabase setup or run supabase-patch.sql.');
-      return null;
       saveLocalComment(dayId, eventId, comment);
       showToast('Saved locally on this device (Supabase comment policy blocked this insert).');
       return comment;
@@ -363,10 +350,6 @@ async function _saveComment({ eventId, dayId, content, type, parentId }) {
     comment.id = data.id;
   } else {
     // localStorage
-    const stored = JSON.parse(localStorage.getItem('kims_comments_' + dayId) || '{}');
-    if (!stored[eventId]) stored[eventId] = [];
-    stored[eventId].push(comment);
-    localStorage.setItem('kims_comments_' + dayId, JSON.stringify(stored));
     saveLocalComment(dayId, eventId, comment);
   }
 
@@ -392,3 +375,147 @@ const editHistoryCache = {};
 
 async function saveEditHistory(eventId, dayId, fieldName, oldValue, newValue) {
   if (!currentUser) return;
+
+  const entry = {
+    id:         'local-' + Date.now(),
+    created_at: new Date().toISOString(),
+    event_id:   eventId,
+    day_id:     dayId,
+    user_id:    currentUser.id,
+    user_name:  currentUser.name,
+    field_name: fieldName,
+    old_value:  oldValue || '',
+    new_value:  newValue || '',
+  };
+
+  if (USE_SUPABASE) {
+    const { data, error } = await supabase.from('edit_history').insert({
+      event_id:   entry.event_id,
+      day_id:     entry.day_id,
+      user_name:  entry.user_name,
+      field_name: entry.field_name,
+      old_value:  entry.old_value,
+      new_value:  entry.new_value,
+    }).select().single();
+    if (!error && data) entry.id = data.id;
+  } else {
+    const stored = JSON.parse(localStorage.getItem('kims_history') || '{}');
+    if (!stored[eventId]) stored[eventId] = [];
+    stored[eventId].push(entry);
+    localStorage.setItem('kims_history', JSON.stringify(stored));
+  }
+
+  if (!editHistoryCache[eventId]) editHistoryCache[eventId] = [];
+  editHistoryCache[eventId].push(entry);
+}
+
+async function loadEditHistory(eventId) {
+  if (editHistoryCache[eventId]) return editHistoryCache[eventId];
+
+  if (USE_SUPABASE) {
+    const { data } = await supabase
+      .from('edit_history')
+      .select('*')
+      .eq('event_id', eventId)
+      .order('created_at', { ascending: false });
+    editHistoryCache[eventId] = data || [];
+  } else {
+    const stored = JSON.parse(localStorage.getItem('kims_history') || '{}');
+    editHistoryCache[eventId] = (stored[eventId] || []).reverse();
+  }
+  return editHistoryCache[eventId];
+}
+
+async function openHistoryModal(eventId, eventName) {
+  document.getElementById('historyModalTitle').textContent = `Edit History — ${eventName}`;
+  document.getElementById('historyModal').classList.add('open');
+
+  const history = await loadEditHistory(eventId);
+  const list    = document.getElementById('historyList');
+
+  if (!history || history.length === 0) {
+    list.innerHTML = '<p class="no-comments">No edits have been made to this stop yet.</p>';
+    return;
+  }
+
+  list.innerHTML = history.map(h => {
+    const date    = new Date(h.created_at);
+    const timeStr = formatCommentDate(date);
+    return `
+      <div class="history-entry">
+        <div class="history-header">
+          <span class="history-who">
+            <span class="author-avatar small">${getInitials(h.user_name)}</span>
+            <strong>${escapeHtml(h.user_name)}</strong> edited <em>${escapeHtml(h.field_name)}</em>
+          </span>
+          <span class="history-time">${timeStr}</span>
+        </div>
+        <div class="history-diff">
+          <div class="diff-old"><span class="diff-label">Before</span>${escapeHtml(h.old_value || '(empty)')}</div>
+          <div class="diff-arrow">→</div>
+          <div class="diff-new"><span class="diff-label">After</span>${escapeHtml(h.new_value || '(empty)')}</div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ─── Save event override ────────────────────────────────────
+const eventOverrides = {};
+
+async function loadEventOverrides() {
+  try {
+    if (USE_SUPABASE) {
+      const { data } = await supabase.from('event_overrides').select('*');
+      if (data) data.forEach(row => { eventOverrides[row.event_id] = row.data; });
+    } else {
+      const stored = localStorage.getItem('kims_overrides');
+      if (stored) Object.assign(eventOverrides, JSON.parse(stored));
+    }
+  } catch (e) {
+    console.warn('Could not load event overrides, continuing without them.', e);
+  }
+}
+
+async function saveEventOverride(eventId, updates) {
+  Object.assign(eventOverrides, { [eventId]: { ...(eventOverrides[eventId] || {}), ...updates } });
+
+  if (USE_SUPABASE) {
+    await supabase.from('event_overrides').upsert({
+      event_id:        eventId,
+      data:            eventOverrides[eventId],
+      updated_at:      new Date().toISOString(),
+      updated_by_name: currentUser?.name || 'unknown',
+    });
+  } else {
+    localStorage.setItem('kims_overrides', JSON.stringify(eventOverrides));
+  }
+}
+
+// ─── Utilities ─────────────────────────────────────────────
+function formatCommentDate(date) {
+  const now     = Date.now();
+  const seconds = Math.floor((now - date.getTime()) / 1000);
+  if (seconds < 60)     return 'just now';
+  if (seconds < 3600)   return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86400)  return `${Math.floor(seconds / 3600)}h ago`;
+  if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+// Keep old name for backward compat
+function formatTimeAgo(date) { return formatCommentDate(date); }
+
+function getInitials(name) {
+  if (!name) return '?';
+  return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
