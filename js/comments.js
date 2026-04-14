@@ -39,19 +39,23 @@ function ensureCurrentUserFromName(name) {
 // ─── Load comments for a day (batch fetch) ─────────────────
 async function loadCommentsForDay(dayId) {
   if (USE_SUPABASE) {
-    const { data, error } = await supabase
-      .from('comments')
-      .select('*')
-      .eq('day_id', dayId)
-      .order('created_at', { ascending: true });
+    try {
+      const { data, error } = await supabase
+        .from('comments')
+        .select('*')
+        .eq('day_id', dayId)
+        .order('created_at', { ascending: true });
 
-    if (!error && data) {
-      data.forEach(c => {
-        if (!commentsCache[c.event_id]) commentsCache[c.event_id] = [];
-        if (!commentsCache[c.event_id].find(x => x.id === c.id)) {
-          commentsCache[c.event_id].push(c);
-        }
-      });
+      if (!error && data) {
+        data.forEach(c => {
+          if (!commentsCache[c.event_id]) commentsCache[c.event_id] = [];
+          if (!commentsCache[c.event_id].find(x => x.id === c.id)) {
+            commentsCache[c.event_id].push(c);
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('Could not load Supabase comments, using local cache only.', e);
     }
 
     // Keep locally-fallback comments available even when Supabase is enabled.
@@ -326,28 +330,35 @@ async function _saveComment({ eventId, dayId, content, type, parentId }) {
   };
 
   if (USE_SUPABASE) {
-    const payload = {
-      event_id:  comment.event_id,
-      day_id:    comment.day_id,
-      user_name: comment.user_name,
-      content:   comment.content,
-      type:      comment.type,
-    };
-    if (comment.parent_id) payload.parent_id = comment.parent_id;
+    try {
+      const payload = {
+        event_id:  comment.event_id,
+        day_id:    comment.day_id,
+        user_name: comment.user_name,
+        content:   comment.content,
+        type:      comment.type,
+      };
+      if (comment.parent_id) payload.parent_id = comment.parent_id;
 
-    const { data, error } = await supabase
-      .from('comments')
-      .insert(payload)
-      .select()
-      .single();
+      const { data, error } = await supabase
+        .from('comments')
+        .insert(payload)
+        .select()
+        .single();
 
-    if (error) {
-      console.error('Comment save error:', error);
+      if (error) {
+        console.error('Comment save error:', error);
+        saveLocalComment(dayId, eventId, comment);
+        showToast('Saved locally on this device (Supabase comment policy blocked this insert).');
+        return comment;
+      }
+      comment.id = data.id;
+    } catch (e) {
+      console.error('Comment save threw exception, falling back to local.', e);
       saveLocalComment(dayId, eventId, comment);
-      showToast('Saved locally on this device (Supabase comment policy blocked this insert).');
+      showToast('Saved locally on this device (network/server issue).');
       return comment;
     }
-    comment.id = data.id;
   } else {
     // localStorage
     saveLocalComment(dayId, eventId, comment);
@@ -467,12 +478,14 @@ async function loadEventOverrides() {
     if (USE_SUPABASE) {
       const { data } = await supabase.from('event_overrides').select('*');
       if (data) data.forEach(row => { eventOverrides[row.event_id] = row.data; });
-    } else {
-      const stored = localStorage.getItem('kims_overrides');
-      if (stored) Object.assign(eventOverrides, JSON.parse(stored));
     }
+    // Always merge local fallback overrides too.
+    const stored = localStorage.getItem('kims_overrides');
+    if (stored) Object.assign(eventOverrides, JSON.parse(stored));
   } catch (e) {
     console.warn('Could not load event overrides, continuing without them.', e);
+    const stored = localStorage.getItem('kims_overrides');
+    if (stored) Object.assign(eventOverrides, JSON.parse(stored));
   }
 }
 
@@ -480,15 +493,20 @@ async function saveEventOverride(eventId, updates) {
   Object.assign(eventOverrides, { [eventId]: { ...(eventOverrides[eventId] || {}), ...updates } });
 
   if (USE_SUPABASE) {
-    await supabase.from('event_overrides').upsert({
-      event_id:        eventId,
-      data:            eventOverrides[eventId],
-      updated_at:      new Date().toISOString(),
-      updated_by_name: currentUser?.name || 'unknown',
-    });
-  } else {
-    localStorage.setItem('kims_overrides', JSON.stringify(eventOverrides));
+    try {
+      const { error } = await supabase.from('event_overrides').upsert({
+        event_id:        eventId,
+        data:            eventOverrides[eventId],
+        updated_at:      new Date().toISOString(),
+        updated_by_name: currentUser?.name || 'unknown',
+      });
+      if (error) throw error;
+    } catch (e) {
+      console.warn('Could not save override to Supabase, keeping local fallback.', e);
+      showToast('Saved locally on this device (Supabase blocked image/edit save).');
+    }
   }
+  localStorage.setItem('kims_overrides', JSON.stringify(eventOverrides));
 }
 
 // ─── Utilities ─────────────────────────────────────────────
