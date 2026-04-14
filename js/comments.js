@@ -168,7 +168,7 @@ function renderInlineComment(comment, allReplies, eventId) {
         <span class="ic-time" title="${date.toLocaleString()}">${timeStr}</span>
       </div>
       <p class="ic-body">${escapeHtml(comment.content)}</p>
-@@ -129,96 +178,129 @@ function renderReplyComment(reply) {
+@@ -129,158 +178,201 @@ function renderReplyComment(reply) {
       <div class="ic-header">
         <span class="ic-avatar small">${getInitials(reply.user_name)}</span>
         <span class="ic-name">${escapeHtml(reply.user_name)}</span>
@@ -254,6 +254,13 @@ async function submitInlineCommentWithName(eventId) {
 
 async function submitInlineComment(eventId) {
   if (!currentUser) { openAuthModal(); return; }
+  if (!currentUser) {
+    const nameInput = document.getElementById('inline-name-' + eventId);
+    if (!ensureCurrentUserFromName(nameInput?.value)) {
+      nameInput?.focus();
+      return;
+    }
+  }
 
   const textarea = document.getElementById('inline-text-' + eventId);
   const content  = textarea?.value.trim();
@@ -290,6 +297,13 @@ async function submitReplyWithName(parentId, eventId) {
 
 async function submitReply(parentId, eventId) {
   if (!currentUser) { openAuthModal(); return; }
+  if (!currentUser) {
+    const nameInput = document.getElementById('reply-name-' + parentId);
+    if (!ensureCurrentUserFromName(nameInput?.value)) {
+      nameInput?.focus();
+      return;
+    }
+  }
 
   const textarea = document.getElementById('reply-text-' + parentId);
   const content  = textarea?.value.trim();
@@ -313,7 +327,8 @@ async function _saveComment({ eventId, dayId, content, type, parentId }) {
   const comment = {
     id:         USE_SUPABASE ? null : 'local-' + Date.now(),
     created_at: new Date().toISOString(),
-@@ -227,60 +309,58 @@ async function _saveComment({ eventId, dayId, content, type, parentId }) {
+    event_id:   eventId,
+    day_id:     dayId,
     user_id:    currentUser.id,
     user_name:  currentUser.name,
     content,
