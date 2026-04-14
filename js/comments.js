@@ -74,6 +74,10 @@ async function loadCommentsForDay(dayId) {
     Object.assign(commentsCache, data);
   }
   refreshCommentCounts();
+
+  // Render side-comment rails for this day so comment boxes are always available.
+  const day = ITINERARY.find(d => d.id === dayId);
+  if (day) day.events.forEach(evt => renderInlineComments(evt.id));
 }
 
 // ─── Refresh comment count badges ──────────────────────────
