@@ -638,6 +638,17 @@ a.res-chip:hover { background: rgba(255,255,255,0.25); }
 }
 
 /* ─── Inline comments ────────────────────────────────────── */
+.event-content-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 14px;
+}
+
+.event-comments-rail {
+  border-left: 1px solid var(--fog);
+  padding-left: 12px;
+}
+
 .inline-comments {
   margin-top: 14px;
   border-top: 1px solid var(--fog);
@@ -657,6 +668,9 @@ a.res-chip:hover { background: rgba(255,255,255,0.25); }
   transition: var(--transition);
   width: 100%;
   text-align: left;
+}
+.comment-toggle-btn.side {
+  margin-bottom: 8px;
 }
 .comment-toggle-btn:hover {
   background: var(--fog);
@@ -686,6 +700,9 @@ a.res-chip:hover { background: rgba(255,255,255,0.25); }
 .comments-body {
   margin-top: 10px;
 }
+.comments-body.side {
+  margin-top: 0;
+}
 
 .comments-list { margin-bottom: 12px; }
 
@@ -695,6 +712,16 @@ a.res-chip:hover { background: rgba(255,255,255,0.25); }
   color: var(--mid);
   font-size: 0.84rem;
   font-style: italic;
+}
+
+@media (max-width: 1100px) {
+  .event-content-grid { grid-template-columns: 1fr; }
+  .event-comments-rail {
+    border-left: none;
+    border-top: 1px solid var(--fog);
+    padding-left: 0;
+    padding-top: 10px;
+  }
 }
 
 /* ─── Inline comment card ────────────────────────────────── */
