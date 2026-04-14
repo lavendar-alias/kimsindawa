@@ -162,9 +162,10 @@ function renderEvent(event, day, idx) {
     ? `<div class="event-alt-note">ℹ️ ${escapeHtml(e.altNote)}</div>` : '';
 
   // Photo banner
-  const photoHtml = e.image
+  const imageSrc = getEventImageSrc(e.image);
+  const photoHtml = imageSrc
     ? `<div class="event-photo-wrap">
-         <img class="event-photo" src="${e.image}" alt="${escapeHtml(e.title)}" loading="lazy" onerror="this.parentElement.style.display='none'">
+         <img class="event-photo" src="${escapeHtml(imageSrc)}" alt="${escapeHtml(e.title)}" loading="lazy" onerror="this.parentElement.style.display='none'">
        </div>` : '';
 
   // Google search link for the stop title
@@ -186,56 +187,60 @@ function renderEvent(event, day, idx) {
       <div class="event-card" data-event-id="${e.id}">
         ${photoHtml}
         ${splitGroupHtml}
-        <div class="event-card-header">
-          <div class="event-title-row">
-            <h3 class="event-title" id="title-${e.id}" data-field="title" data-event="${e.id}" data-day="${day.id}">
-              <a class="event-title-link" href="${googleSearchUrl}" target="_blank" rel="noopener">${escapeHtml(e.title)}</a>
-            </h3>
-            <div class="event-actions">
-              <button class="action-btn history-btn edit-btn" onclick="openHistoryModal('${e.id}', '${escapeHtml(e.title).replace(/'/g,"\\'")}', '${day.id}')" title="Edit History" style="display:none;">
-                🕐
-              </button>
-              <button class="action-btn edit-btn" onclick="toggleEditMode('${e.id}', '${day.id}')" title="Edit this stop" style="display:none;">
-                ✏️
-              </button>
+        <div class="event-content-grid">
+          <div class="event-main-content">
+            <div class="event-card-header">
+              <div class="event-title-row">
+                <h3 class="event-title" id="title-${e.id}" data-field="title" data-event="${e.id}" data-day="${day.id}">
+                  <a class="event-title-link" href="${googleSearchUrl}" target="_blank" rel="noopener">${escapeHtml(e.title)}</a>
+                </h3>
+                <div class="event-actions">
+                  <button class="action-btn history-btn edit-btn" onclick="openHistoryModal('${e.id}', '${escapeHtml(e.title).replace(/'/g,"\\'")}', '${day.id}')" title="Edit History" style="display:none;">
+                    🕐
+                  </button>
+                  <button class="action-btn edit-btn" onclick="toggleEditMode('${e.id}', '${day.id}')" title="Edit this stop" style="display:none;">
+                    ✏️
+                  </button>
+                </div>
+              </div>
+
+              ${e.address ? `
+              <a class="event-address" href="${makeGoogleMapsLink(e.coords)}" target="_blank">
+                📍 ${escapeHtml(e.address)}
+              </a>` : ''}
             </div>
+
+            <p class="event-description" id="desc-${e.id}" data-field="description" data-event="${e.id}" data-day="${day.id}">${escapeHtml(e.description)}</p>
+
+            ${altNoteHtml}
+
+            <div class="event-pills">
+              ${durationHtml}
+              ${costHtml}
+            </div>
+
+            ${reservationHtml}
+            ${commuteHtml}
+
+            ${hasMap ? `<div class="event-map-toggle">
+              <button class="map-toggle-btn" onclick="toggleMap('${e.id}')">🗺️ Show on Map</button>
+              <div class="event-map-container" id="map-${e.id}" style="display:none;"></div>
+            </div>` : ''}
           </div>
 
-          ${e.address ? `
-          <a class="event-address" href="${makeGoogleMapsLink(e.coords)}" target="_blank">
-            📍 ${escapeHtml(e.address)}
-          </a>` : ''}
-        </div>
-
-        <p class="event-description" id="desc-${e.id}" data-field="description" data-event="${e.id}" data-day="${day.id}">${escapeHtml(e.description)}</p>
-
-        ${altNoteHtml}
-
-        <div class="event-pills">
-          ${durationHtml}
-          ${costHtml}
-        </div>
-
-        ${reservationHtml}
-        ${commuteHtml}
-
-        ${hasMap ? `<div class="event-map-toggle">
-          <button class="map-toggle-btn" onclick="toggleMap('${e.id}')">🗺️ Show on Map</button>
-          <div class="event-map-container" id="map-${e.id}" style="display:none;"></div>
-        </div>` : ''}
-
-        <!-- Inline comment section -->
-        <div class="inline-comments" id="inline-comments-${e.id}">
-          <button class="comment-toggle-btn" onclick="toggleComments('${e.id}', '${day.id}', '${escapeHtml(e.title).replace(/'/g,"\\'")}')">
-            <span class="comment-toggle-icon">💬</span>
-            <span class="comment-toggle-text">Comments</span>
-            <span class="comment-count-badge" id="comment-badge-${e.id}" style="display:none;"></span>
-            <span class="comment-toggle-arrow" id="comment-arrow-${e.id}">▾</span>
-          </button>
-          <div class="comments-body" id="comments-body-${e.id}" style="display:none;">
-            <div class="comments-list" id="comments-list-${e.id}"></div>
-            <div class="comment-form" id="comment-form-${e.id}"></div>
-          </div>
+          <!-- Side comments (Word-like margin comments) -->
+          <aside class="event-comments-rail" id="inline-comments-${e.id}">
+            <button class="comment-toggle-btn side" onclick="toggleComments('${e.id}', '${day.id}', '${escapeHtml(e.title).replace(/'/g,"\\'")}')">
+              <span class="comment-toggle-icon">💬</span>
+              <span class="comment-toggle-text">Comments</span>
+              <span class="comment-count-badge" id="comment-badge-${e.id}" style="display:none;"></span>
+              <span class="comment-toggle-arrow" id="comment-arrow-${e.id}">▴</span>
+            </button>
+            <div class="comments-body side" id="comments-body-${e.id}" style="display:block;">
+              <div class="comments-list" id="comments-list-${e.id}"></div>
+              <div class="comment-form" id="comment-form-${e.id}"></div>
+            </div>
+          </aside>
         </div>
       </div>
     </div>
@@ -685,6 +690,37 @@ function showToast(msg) {
 }
 
 // ─── Format helpers ────────────────────────────────────────
+function getEventImageSrc(rawUrl) {
+  const clean = (rawUrl || '').trim();
+  if (!clean) return '';
+
+  // Google Drive shared links -> direct image endpoint
+  const driveMatch = clean.match(/drive\.google\.com\/file\/d\/([^/]+)/);
+  if (driveMatch?.[1]) {
+    return `https://drive.google.com/uc?export=view&id=${driveMatch[1]}`;
+  }
+
+  // Dropbox shared links -> direct download link
+  if (clean.includes('dropbox.com')) {
+    try {
+      const u = new URL(clean);
+      u.searchParams.set('raw', '1');
+      u.searchParams.delete('dl');
+      return u.toString();
+    } catch (_) { /* ignore parse errors */ }
+  }
+
+  // If it already looks like an image URL, use it as-is.
+  if (/\.(png|jpe?g|webp|gif|svg|avif)(\?|#|$)/i.test(clean)) return clean;
+
+  // Fallback: screenshot service for normal page URLs (Word-like "any URL" behavior).
+  if (/^https?:\/\//i.test(clean)) {
+    return `https://image.thum.io/get/width/1200/noanimate/${encodeURIComponent(clean)}`;
+  }
+
+  return clean;
+}
+
 function formatTime(timeStr) {
   if (!timeStr) return '';
   const prefix = timeStr.startsWith('~') ? '~' : '';
