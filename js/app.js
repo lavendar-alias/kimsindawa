@@ -26,6 +26,7 @@ async function refreshApp() {
   updateAuthUI(); // call AFTER render so edit buttons exist in the DOM
   renderReservationBanner();
   setupScrollSpy();
+  setupStickyDayHeader();
   autoScrollToToday();
 
   // Lazy-load comments for visible days
@@ -122,13 +123,6 @@ function renderDay(day) {
           ${day.transport ? `<div class="day-transport">🚊 ${day.transport}</div>` : ''}
         </div>
         <div class="day-overview-map" id="map-overview-${day.id}"></div>
-      </div>
-
-      <!-- Sticky day indicator — sticks as you scroll through events -->
-      <div class="day-sticky-indicator" style="--day-accent:${day.accentColor};" data-day-id="${day.id}">
-        <span class="dsi-emoji">${day.emoji}</span>
-        <span class="dsi-label">Day ${day.dayNumber} · ${day.title}</span>
-        <span class="dsi-date">April ${dateNum}</span>
       </div>
 
       <div class="day-timeline">
@@ -259,6 +253,10 @@ function renderEvent(event, day, idx) {
           <textarea id="edit-desc-${e.id}" rows="3">${escapeHtml(e.description)}</textarea>
         </div>
         <div class="form-group">
+          <label>Image URL</label>
+          <input type="text" id="edit-image-${e.id}" value="${escapeHtml(e.image || '')}" placeholder="https://...">
+        </div>
+        <div class="form-group">
           <label>Address</label>
           <div class="address-autocomplete-wrap">
             <input type="text" id="edit-address-${e.id}" value="${escapeHtml(e.address || '')}"
@@ -369,6 +367,7 @@ async function saveEdit(eventId, dayId) {
   const newTime    = document.getElementById('edit-time-'    + eventId)?.value.trim();
   const newCost    = document.getElementById('edit-cost-'    + eventId)?.value.trim();
   const newAddress = document.getElementById('edit-address-' + eventId)?.value.trim();
+  const newImage   = document.getElementById('edit-image-'   + eventId)?.value.trim();
 
   const day   = ITINERARY.find(d => d.id === dayId);
   const event = day?.events.find(e => e.id === eventId);
@@ -399,6 +398,10 @@ async function saveEdit(eventId, dayId) {
   if (newAddress !== undefined && newAddress !== (cur.address || '')) {
     updates.address = newAddress;
     historyPromises.push(saveEditHistory(eventId, dayId, 'address', cur.address, newAddress));
+  }
+  if (newImage !== undefined && newImage !== (cur.image || '')) {
+    updates.image = newImage || null;
+    historyPromises.push(saveEditHistory(eventId, dayId, 'image', cur.image || '', newImage || '(removed)'));
   }
 
   if (Object.keys(updates).length === 0) {
@@ -574,6 +577,53 @@ function setupScrollSpy() {
   }, { rootMargin: '-30% 0px -60% 0px' });
 
   sections.forEach(s => observer.observe(s));
+}
+
+function setupStickyDayHeader() {
+  let sticky = document.getElementById('global-day-sticky');
+  if (!sticky) {
+    sticky = document.createElement('div');
+    sticky.id = 'global-day-sticky';
+    sticky.className = 'global-day-sticky';
+    const anchor = document.getElementById('checklistBanner');
+    if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(sticky, anchor.nextSibling);
+    else document.body.appendChild(sticky);
+  }
+
+  const renderSticky = () => {
+    const offset = window.innerWidth >= 641 ? 100 : 60;
+    const firstDayEl = document.getElementById(ITINERARY[0]?.id || '');
+    if (!firstDayEl) return;
+
+    if (firstDayEl.getBoundingClientRect().top > offset) {
+      sticky.style.display = 'none';
+      return;
+    }
+
+    let activeDay = ITINERARY[0];
+    for (const day of ITINERARY) {
+      const el = document.getElementById(day.id);
+      if (!el) continue;
+      if (el.getBoundingClientRect().top - offset <= 0) activeDay = day;
+    }
+
+    const dateNum = activeDay.date.split('-')[2];
+    sticky.style.setProperty('--day-accent', activeDay.accentColor || '#2E6B8A');
+    sticky.innerHTML = `
+      <span class="dsi-emoji">${activeDay.emoji}</span>
+      <span class="dsi-label">Day ${activeDay.dayNumber} · ${escapeHtml(activeDay.title)}</span>
+      <span class="dsi-date">April ${dateNum}</span>`;
+    sticky.style.display = 'flex';
+  };
+
+  if (window.__stickyDayHandler) {
+    window.removeEventListener('scroll', window.__stickyDayHandler);
+    window.removeEventListener('resize', window.__stickyDayHandler);
+  }
+  window.__stickyDayHandler = renderSticky;
+  window.addEventListener('scroll', window.__stickyDayHandler, { passive: true });
+  window.addEventListener('resize', window.__stickyDayHandler);
+  renderSticky();
 }
 
 // ─── Inline comments ──────────────────────────────────────
