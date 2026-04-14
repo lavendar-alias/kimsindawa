@@ -12,8 +12,8 @@
 // comments and edits are stored locally in this browser only.
 // ============================================================
 
-const SUPABASE_URL    = 'https://dsatrdpxyqijpgokwcaj.supabase.co';   // e.g. 'https://xyzabc.supabase.co'
-const SUPABASE_ANON   = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRzYXRyZHB4eXFpanBnb2t3Y2FqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxMjM4NDAsImV4cCI6MjA5MTY5OTg0MH0.RhrW41HzqgCWzRC1OUjEaWk--HBL0Pdvr5Eiq_3Mo5Y';
+const SUPABASE_URL    = '';   // e.g. 'https://xyzabc.supabase.co'
+const SUPABASE_ANON   = '';
 
 // Host email — this account gets edit privileges
 const HOST_EMAIL = 'reinaalois@gmail.com';        // e.g. 'kim@example.com'
