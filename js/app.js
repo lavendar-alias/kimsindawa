@@ -2,7 +2,6 @@
 // MAIN APPLICATION
 // ============================================================
 
-// ─── Boot ──────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async () => {
   await initAuth();
   renderNav();
@@ -117,9 +116,7 @@ function renderDay(day) {
         <span class="dsi-date">April ${dateNum}</span>
       </div>
 
-      <div class="day-timeline">
-        ${eventsHtml}
-      </div>
+      <div class="day-timeline">${eventsHtml}</div>
     </section>`;
 }
 
@@ -131,7 +128,7 @@ function renderEvent(event, day, idx) {
   const hasMap   = !!e.coords;
   const isLast   = idx === day.events.length - 1;
 
-  const commuteHtml = renderCommute(e, day);
+  const commuteHtml     = renderCommute(e, day);
   const reservationHtml = e.reservation
     ? `<div class="event-reservation">
          <span class="res-badge">🔖 Reservation Recommended</span>
@@ -148,13 +145,14 @@ function renderEvent(event, day, idx) {
   const durationHtml = e.duration ? `<span class="event-pill dur-pill">⏱ ${escapeHtml(e.duration)}</span>` : '';
   const altNoteHtml  = e.altNote  ? `<div class="event-alt-note">ℹ️ ${escapeHtml(e.altNote)}</div>`         : '';
 
-  const imageSrc = getEventImage(e);
+  const imageSrc  = getEventImage(e);
   const photoHtml = imageSrc
     ? `<div class="event-photo-wrap">
-         <img class="event-photo" src="${imageSrc}" alt="${escapeHtml(e.title)}" loading="lazy" onerror="handleEventImageError(this, '${e.coords ? '1' : '0'}', '${e.coords?.lat ?? ''}', '${e.coords?.lng ?? ''}', '${escapeHtml(e.title).replace(/'/g,"\\'")}')">
+         <img class="event-photo" src="${imageSrc}" alt="${escapeHtml(e.title)}" loading="lazy"
+              onerror="handleEventImageError(this, '${e.coords ? '1' : '0'}', '${e.coords?.lat ?? ''}', '${e.coords?.lng ?? ''}', '${escapeHtml(e.title).replace(/'/g,"\\'")}')">
        </div>` : '';
 
-  const searchQuery  = e.address ? encodeURIComponent(e.title + ' ' + e.address) : encodeURIComponent(e.title + ' Seattle');
+  const searchQuery     = e.address ? encodeURIComponent(e.title + ' ' + e.address) : encodeURIComponent(e.title + ' Seattle');
   const googleSearchUrl = `https://www.google.com/search?q=${searchQuery}`;
 
   return `
@@ -216,24 +214,38 @@ function renderEvent(event, day, idx) {
     <div class="edit-panel" id="edit-panel-${e.id}" style="display:none;" data-day="${day.id}">
       <div class="edit-panel-inner">
         <h4>Edit this stop</h4>
+
+        <!-- Name field — searches places as you type -->
         <div class="form-group">
           <label>Name</label>
-          <input type="text" id="edit-title-${e.id}" value="${escapeHtml(e.title)}">
+          <div class="address-autocomplete-wrap">
+            <input type="text" id="edit-title-${e.id}" value="${escapeHtml(e.title)}"
+                   placeholder="Type a place name to search nearby…"
+                   autocomplete="off"
+                   oninput="onTitleInput('${e.id}', this.value)">
+            <div class="address-suggestions" id="title-suggestions-${e.id}"></div>
+          </div>
         </div>
+
         <div class="form-group">
           <label>Description</label>
           <textarea id="edit-desc-${e.id}" rows="3">${escapeHtml(e.description)}</textarea>
         </div>
+
+        <!-- Address field — also searches as you type -->
         <div class="form-group">
           <label>Address</label>
           <div class="address-autocomplete-wrap">
             <input type="text" id="edit-address-${e.id}" value="${escapeHtml(e.address || '')}"
-                   placeholder="Type address or place name…" autocomplete="off"
+                   placeholder="Type address or place name…"
+                   autocomplete="off"
                    oninput="onAddressInput('${e.id}', this.value)">
             <div class="address-suggestions" id="addr-suggestions-${e.id}"></div>
           </div>
         </div>
+
         <div id="edit-map-${e.id}" class="edit-mini-map" style="display:none;"></div>
+
         <div class="edit-row">
           <div class="form-group">
             <label>Time</label>
@@ -244,6 +256,8 @@ function renderEvent(event, day, idx) {
             <input type="text" id="edit-cost-${e.id}" value="${e.cost || ''}">
           </div>
         </div>
+
+        <!-- Photo — type="text" so data: URIs work -->
         <div class="form-group">
           <label>Photo</label>
           <div class="photo-upload-wrap" id="photo-drop-${e.id}"
@@ -257,10 +271,12 @@ function renderEvent(event, day, idx) {
                      onchange="loadEventImageFile('${e.id}', this.files)" style="display:none;">
             </label>
           </div>
-          <input class="photo-url-input" type="url" id="edit-image-${e.id}"
-                 value="${escapeHtml(e.image || '')}" placeholder="…or paste a photo URL">
-          <small class="form-help">URL or file — Save Changes to apply.</small>
+          <input class="photo-url-input" type="text" id="edit-image-${e.id}"
+                 value="${escapeHtml(e.image || '')}"
+                 placeholder="…or paste a photo URL">
+          <small class="form-help">URL or drag-and-drop file — Save Changes to apply.</small>
         </div>
+
         ${commuteHtml ? `<div class="edit-commute-preview">${commuteHtml}</div>` : ''}
         <div class="edit-actions">
           <button class="btn-save" onclick="saveEdit('${e.id}', '${day.id}')">Save Changes</button>
@@ -287,9 +303,7 @@ function renderCommute(event, day) {
     </div>`;
 }
 
-function isOnTripDate(dateStr) {
-  return new Date().toISOString().slice(0, 10) === dateStr;
-}
+function isOnTripDate(dateStr) { return new Date().toISOString().slice(0, 10) === dateStr; }
 
 function makeGoogleMapsLink(coords) {
   if (!coords) return '#';
@@ -298,9 +312,9 @@ function makeGoogleMapsLink(coords) {
 
 function makeDirectionLink(commute, event, day) {
   if (!event.coords) return '#';
-  const mode = commute.mode === 'transit' ? 'transit' : commute.mode === 'walk' ? 'walking' : 'driving';
-  const events = day.events;
-  const myIdx  = events.findIndex(e => e.id === event.id);
+  const mode    = commute.mode === 'transit' ? 'transit' : commute.mode === 'walk' ? 'walking' : 'driving';
+  const events  = day.events;
+  const myIdx   = events.findIndex(e => e.id === event.id);
   const prevEvt = events.slice(0, myIdx).reverse().find(e => e.coords);
   if (!prevEvt) return `https://www.google.com/maps/dir/?api=1&destination=${event.coords.lat},${event.coords.lng}&travelmode=${mode}`;
   return `https://www.google.com/maps/dir/?api=1&origin=${prevEvt.coords.lat},${prevEvt.coords.lng}&destination=${event.coords.lat},${event.coords.lng}&travelmode=${mode}`;
@@ -336,16 +350,19 @@ async function saveEdit(eventId, dayId) {
   if (!event) return;
 
   const override = eventOverrides[eventId] || {};
-  const cur = { ...event, ...override };
-  const updates = {};
+  const cur      = { ...event, ...override };
+  const updates  = {};
   const historyPromises = [];
 
-  if (newTitle   && newTitle   !== cur.title)                { updates.title       = newTitle;   historyPromises.push(saveEditHistory(eventId, dayId, 'title',       cur.title,       newTitle)); }
-  if (newDesc    && newDesc    !== cur.description)          { updates.description = newDesc;    historyPromises.push(saveEditHistory(eventId, dayId, 'description', cur.description, newDesc)); }
+  if (newTitle   && newTitle   !== cur.title)                       { updates.title       = newTitle;        historyPromises.push(saveEditHistory(eventId, dayId, 'title',       cur.title,       newTitle)); }
+  if (newDesc    && newDesc    !== cur.description)                 { updates.description = newDesc;         historyPromises.push(saveEditHistory(eventId, dayId, 'description', cur.description, newDesc)); }
   if (newTime    !== undefined && newTime    !== (cur.time    || '')) { updates.time    = newTime;    historyPromises.push(saveEditHistory(eventId, dayId, 'time',    cur.time,    newTime)); }
   if (newCost    !== undefined && newCost    !== (cur.cost    || '')) { updates.cost    = newCost;    historyPromises.push(saveEditHistory(eventId, dayId, 'cost',    cur.cost,    newCost)); }
   if (newAddress !== undefined && newAddress !== (cur.address || '')) { updates.address = newAddress; historyPromises.push(saveEditHistory(eventId, dayId, 'address', cur.address, newAddress)); }
-  if (newImage   !== undefined && newImage   !== (cur.image  || '')) { updates.image   = newImage || null; historyPromises.push(saveEditHistory(eventId, dayId, 'image', cur.image, newImage || '(removed)')); }
+  if (newImage   !== undefined && newImage   !== (cur.image  || '')) {
+    updates.image = newImage || null;
+    historyPromises.push(saveEditHistory(eventId, dayId, 'image', cur.image, newImage || '(removed)'));
+  }
   if (eventOverrides[eventId]?._pendingCoords) updates.coords = eventOverrides[eventId]._pendingCoords;
 
   if (Object.keys(updates).length === 0) { toggleEditMode(eventId, dayId); return; }
@@ -370,15 +387,83 @@ async function saveEdit(eventId, dayId) {
   showToast(`Saved! Changes to "${newTitle || cur.title}" recorded.`);
 }
 
-// ─── Address autofill ──────────────────────────────────────
+// ─── Place search — name field autocomplete ────────────────
+// Searches Nominatim biased to Seattle / Kirkland / Bellevue area.
+// Selecting a result fills name + address + drops a map pin.
+const _titleDebounce = {};
+const _placeResults  = {};
+
+function onTitleInput(eventId, value) {
+  clearTimeout(_titleDebounce[eventId]);
+  const suggestionsEl = document.getElementById('title-suggestions-' + eventId);
+  if (!value || value.length < 2) {
+    if (suggestionsEl) suggestionsEl.innerHTML = '';
+    return;
+  }
+
+  _titleDebounce[eventId] = setTimeout(async () => {
+    try {
+      // viewbox covers Seattle / Bellevue / Kirkland / Redmond; bounded=0 still searches wider if no local hits
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(value)}&limit=6&viewbox=-122.55,47.25,-121.85,47.85&bounded=0&addressdetails=1`;
+      const res  = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+      const data = await res.json();
+
+      if (!suggestionsEl) return;
+      if (!data || data.length === 0) { suggestionsEl.innerHTML = ''; return; }
+
+      _placeResults[eventId] = data;
+
+      suggestionsEl.innerHTML = data.map((item, idx) => {
+        const parts = item.display_name.split(',');
+        const name  = parts[0].trim();
+        const sub   = parts.slice(1, 3).join(',').trim();
+        return `<div class="addr-suggestion" onclick="selectPlace('${eventId}', ${idx})">
+          📍 <strong>${escapeHtml(name)}</strong>${sub ? `<small style="opacity:0.6;margin-left:4px;">${escapeHtml(sub)}</small>` : ''}
+        </div>`;
+      }).join('');
+    } catch (_) { /* fail silently */ }
+  }, 380);
+}
+
+function selectPlace(eventId, idx) {
+  const item = (_placeResults[eventId] || [])[idx];
+  if (!item) return;
+
+  const titleInput = document.getElementById('edit-title-'         + eventId);
+  const addrInput  = document.getElementById('edit-address-'       + eventId);
+  const titleSugg  = document.getElementById('title-suggestions-'  + eventId);
+
+  const name = item.display_name.split(',')[0].trim();
+
+  // Build a clean readable address from addressdetails
+  const a    = item.address || {};
+  const addr = [a.house_number, a.road, a.city || a.town || a.village || a.suburb]
+    .filter(Boolean).join(' ') || item.display_name.split(',').slice(0, 3).join(',').trim();
+
+  if (titleInput) titleInput.value = name;
+  if (addrInput)  addrInput.value  = addr;
+  if (titleSugg)  titleSugg.innerHTML = '';
+
+  // Store coords so Save Changes can persist them
+  eventOverrides[eventId] = eventOverrides[eventId] || {};
+  eventOverrides[eventId]._pendingCoords = { lat: parseFloat(item.lat), lng: parseFloat(item.lon) };
+
+  showEditMap(eventId, parseFloat(item.lat), parseFloat(item.lon), name);
+  showToast(`Found: ${name}`);
+}
+
+// ─── Address field autocomplete ────────────────────────────
 const _addrDebounce = {};
+
 function onAddressInput(eventId, value) {
   clearTimeout(_addrDebounce[eventId]);
   const suggestionsEl = document.getElementById('addr-suggestions-' + eventId);
   if (!value || value.length < 3) { if (suggestionsEl) suggestionsEl.innerHTML = ''; return; }
+
   _addrDebounce[eventId] = setTimeout(async () => {
     try {
-      const res  = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(value)}&limit=5&countrycodes=us`, { headers: { 'Accept-Language': 'en' } });
+      const url  = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(value)}&limit=5&countrycodes=us`;
+      const res  = await fetch(url, { headers: { 'Accept-Language': 'en' } });
       const data = await res.json();
       if (!suggestionsEl) return;
       suggestionsEl.innerHTML = (data || []).map(item => {
@@ -390,7 +475,7 @@ function onAddressInput(eventId, value) {
 }
 
 function selectAddress(eventId, address, lat, lng) {
-  const input = document.getElementById('edit-address-' + eventId);
+  const input        = document.getElementById('edit-address-'      + eventId);
   const suggestionsEl = document.getElementById('addr-suggestions-' + eventId);
   if (input) input.value = address;
   if (suggestionsEl) suggestionsEl.innerHTML = '';
@@ -412,6 +497,7 @@ function showEditMap(eventId, lat, lng, title) {
   setTimeout(() => map.invalidateSize(), 100);
 }
 
+// ─── Photo file picker ─────────────────────────────────────
 function loadEventImageFile(eventId, files) {
   const file = files && files[0];
   if (!file) return;
@@ -475,7 +561,7 @@ function renderReservationBanner() {
 
 // ─── Auto-scroll to today ──────────────────────────────────
 function autoScrollToToday() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today   = new Date().toISOString().slice(0, 10);
   const tripDay = ITINERARY.find(d => d.date === today);
   if (!tripDay) return;
   setTimeout(() => { document.getElementById(tripDay.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 700);
@@ -547,17 +633,16 @@ function showToast(msg) {
 function formatTime(timeStr) {
   if (!timeStr) return '';
   const trimmed = timeStr.trim();
-  const prefix = trimmed.startsWith('~') ? '~' : '';
-  const raw = prefix ? trimmed.slice(1).trim() : trimmed;
-  const match = raw.match(/^(\d{1,2}):(\d{2})(?:\s*([AP]M))?$/i);
+  const prefix  = trimmed.startsWith('~') ? '~' : '';
+  const raw     = prefix ? trimmed.slice(1).trim() : trimmed;
+  const match   = raw.match(/^(\d{1,2}):(\d{2})(?:\s*([AP]M))?$/i);
   if (!match) return timeStr;
   let hour = parseInt(match[1], 10);
   const min = match[2];
   const explicitMeridiem = match[3] ? match[3].toUpperCase() : null;
   if (explicitMeridiem === 'PM' && hour < 12) hour += 12;
   if (explicitMeridiem === 'AM' && hour === 12) hour = 0;
-  const ampm = hour >= 12 ? 'PM' : 'AM';
-  return `${prefix}${hour % 12 || 12}:${min} ${ampm}`;
+  return `${prefix}${hour % 12 || 12}:${min} ${hour >= 12 ? 'PM' : 'AM'}`;
 }
 
 function getEventImage(event) {
