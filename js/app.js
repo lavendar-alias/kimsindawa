@@ -28,7 +28,6 @@ async function refreshApp() {
       }
     });
   }, { rootMargin: '200px' });
-
   document.querySelectorAll('.day-section').forEach(el => observer.observe(el));
 }
 
@@ -47,7 +46,6 @@ function renderAuthGate() {
         <p class="auth-gate-note">For Kim's family and friends 🤍</p>
       </div>
     </div>`;
-
   setTimeout(() => {
     const input = document.getElementById('gateNicknameInput');
     input?.focus();
@@ -58,11 +56,26 @@ function renderAuthGate() {
 // ─── Navigation ────────────────────────────────────────────
 function renderNav() {
   const container = document.getElementById('navDays');
-  container.innerHTML = ITINERARY.map((day, i) => `
+  container.innerHTML = ITINERARY.map(day => `
     <button class="nav-day-btn" onclick="scrollToDay('${day.id}')" id="nav-btn-${day.id}">
       <span class="nav-day-emoji">${day.emoji}</span>
       <span class="nav-day-label">Apr ${day.date.split('-')[2]}</span>
     </button>`).join('');
+
+  // Inject comment history button into nav-auth (once)
+  if (!document.getElementById('commentHistoryBtn')) {
+    const authDiv = document.querySelector('.nav-auth');
+    const authBtn = document.getElementById('authBtn');
+    if (authDiv && authBtn) {
+      const btn = document.createElement('button');
+      btn.id        = 'commentHistoryBtn';
+      btn.className = 'btn-nav-comments';
+      btn.title     = 'See all comments';
+      btn.textContent = '💬 Comments';
+      btn.addEventListener('click', openCommentHistoryModal);
+      authDiv.insertBefore(btn, authBtn);
+    }
+  }
 }
 
 function renderHeroStats() {
@@ -78,7 +91,6 @@ function renderHeroStats() {
 function renderAllDays() {
   const container = document.getElementById('daysContainer');
   container.innerHTML = ITINERARY.map(day => renderDay(day)).join('');
-
   requestAnimationFrame(() => {
     ITINERARY.forEach(day => {
       day.events.forEach(event => {
@@ -91,8 +103,7 @@ function renderAllDays() {
 
 function renderDay(day) {
   const eventsHtml = day.events.map((event, idx) => renderEvent(event, day, idx)).join('');
-  const dateNum = day.date.split('-')[2];
-
+  const dateNum    = day.date.split('-')[2];
   return `
     <section class="day-section" id="${day.id}" data-day-id="${day.id}">
       <div class="day-header" style="--day-grad-from:${day.gradientFrom};--day-grad-to:${day.gradientTo};">
@@ -109,13 +120,11 @@ function renderDay(day) {
         </div>
         <div class="day-overview-map" id="map-overview-${day.id}"></div>
       </div>
-
       <div class="day-sticky-indicator" style="--day-accent:${day.accentColor};" data-day-id="${day.id}">
         <span class="dsi-emoji">${day.emoji}</span>
         <span class="dsi-label">Day ${day.dayNumber} · ${day.title}</span>
         <span class="dsi-date">April ${dateNum}</span>
       </div>
-
       <div class="day-timeline">${eventsHtml}</div>
     </section>`;
 }
@@ -149,7 +158,7 @@ function renderEvent(event, day, idx) {
   const photoHtml = imageSrc
     ? `<div class="event-photo-wrap">
          <img class="event-photo" src="${imageSrc}" alt="${escapeHtml(e.title)}" loading="lazy"
-              onerror="handleEventImageError(this, '${e.coords ? '1' : '0'}', '${e.coords?.lat ?? ''}', '${e.coords?.lng ?? ''}', '${escapeHtml(e.title).replace(/'/g,"\\'")}')">
+              onerror="handleEventImageError(this,'${e.coords?'1':'0'}','${e.coords?.lat??''}','${e.coords?.lng??''}','${escapeHtml(e.title).replace(/'/g,"\\'")}')">
        </div>` : '';
 
   const searchQuery     = e.address ? encodeURIComponent(e.title + ' ' + e.address) : encodeURIComponent(e.title + ' Seattle');
@@ -175,28 +184,25 @@ function renderEvent(event, day, idx) {
                 <a class="event-title-link" href="${googleSearchUrl}" target="_blank" rel="noopener">${escapeHtml(e.title)}</a>
               </h3>
               <div class="event-actions">
-                <button class="action-btn history-btn edit-btn" onclick="openHistoryModal('${e.id}', '${escapeHtml(e.title).replace(/'/g,"\\'")}', '${day.id}')" title="Edit History" style="display:none;">🕐</button>
-                <button class="action-btn edit-btn" onclick="toggleEditMode('${e.id}', '${day.id}')" title="Edit this stop" style="display:none;">✏️</button>
+                <button class="action-btn history-btn edit-btn" onclick="openHistoryModal('${e.id}','${escapeHtml(e.title).replace(/'/g,"\\'")}','${day.id}')" title="Edit History" style="display:none;">🕐</button>
+                <button class="action-btn edit-btn" onclick="toggleEditMode('${e.id}','${day.id}')" title="Edit this stop" style="display:none;">✏️</button>
               </div>
             </div>
             ${e.address ? `<a class="event-address" href="${makeGoogleMapsLink(e.coords)}" target="_blank">📍 ${escapeHtml(e.address)}</a>` : ''}
           </div>
-
           <p class="event-description" id="desc-${e.id}" data-field="description" data-event="${e.id}" data-day="${day.id}">${escapeHtml(e.description)}</p>
           ${altNoteHtml}
           <div class="event-pills">${durationHtml}${costHtml}</div>
           ${reservationHtml}
           ${commuteHtml}
-
           ${hasMap ? `<div class="event-map-toggle">
             <button class="map-toggle-btn" onclick="toggleMap('${e.id}')">🗺️ Show on Map</button>
             <div class="event-map-container" id="map-${e.id}" style="display:none;"></div>
           </div>` : ''}
         </div>
 
-        <!-- Comments panel — outside card so overflow:hidden never clips it -->
         <div class="inline-comments" id="inline-comments-${e.id}">
-          <button class="comment-toggle-btn" onclick="toggleComments('${e.id}', '${day.id}', '${escapeHtml(e.title).replace(/'/g,"\\'")}')">
+          <button class="comment-toggle-btn" onclick="toggleComments('${e.id}','${day.id}','${escapeHtml(e.title).replace(/'/g,"\\'")}')">
             <span class="comment-toggle-icon">💬</span>
             <span class="comment-toggle-text">Comments</span>
             <span class="comment-count-badge" id="comment-badge-${e.id}" style="display:none;"></span>
@@ -210,42 +216,32 @@ function renderEvent(event, day, idx) {
       </div>
     </div>
 
-    <!-- Edit Panel -->
     <div class="edit-panel" id="edit-panel-${e.id}" style="display:none;" data-day="${day.id}">
       <div class="edit-panel-inner">
         <h4>Edit this stop</h4>
-
-        <!-- Name field — searches places as you type -->
         <div class="form-group">
           <label>Name</label>
           <div class="address-autocomplete-wrap">
             <input type="text" id="edit-title-${e.id}" value="${escapeHtml(e.title)}"
-                   placeholder="Type a place name to search nearby…"
-                   autocomplete="off"
+                   placeholder="Type a place name to search nearby…" autocomplete="off"
                    oninput="onTitleInput('${e.id}', this.value)">
             <div class="address-suggestions" id="title-suggestions-${e.id}"></div>
           </div>
         </div>
-
         <div class="form-group">
           <label>Description</label>
           <textarea id="edit-desc-${e.id}" rows="3">${escapeHtml(e.description)}</textarea>
         </div>
-
-        <!-- Address field — also searches as you type -->
         <div class="form-group">
           <label>Address</label>
           <div class="address-autocomplete-wrap">
             <input type="text" id="edit-address-${e.id}" value="${escapeHtml(e.address || '')}"
-                   placeholder="Type address or place name…"
-                   autocomplete="off"
+                   placeholder="Type address or place name…" autocomplete="off"
                    oninput="onAddressInput('${e.id}', this.value)">
             <div class="address-suggestions" id="addr-suggestions-${e.id}"></div>
           </div>
         </div>
-
         <div id="edit-map-${e.id}" class="edit-mini-map" style="display:none;"></div>
-
         <div class="edit-row">
           <div class="form-group">
             <label>Time</label>
@@ -256,31 +252,27 @@ function renderEvent(event, day, idx) {
             <input type="text" id="edit-cost-${e.id}" value="${e.cost || ''}">
           </div>
         </div>
-
-        <!-- Photo — type="text" so data: URIs work -->
         <div class="form-group">
           <label>Photo</label>
           <div class="photo-upload-wrap" id="photo-drop-${e.id}"
-               ondragover="event.preventDefault(); document.getElementById('photo-drop-${e.id}').classList.add('drag-over')"
+               ondragover="event.preventDefault();document.getElementById('photo-drop-${e.id}').classList.add('drag-over')"
                ondragleave="document.getElementById('photo-drop-${e.id}').classList.remove('drag-over')"
-               ondrop="handlePhotoDrop('${e.id}', event)">
+               ondrop="handlePhotoDrop('${e.id}',event)">
             <span class="photo-drop-hint">📎 Drag &amp; drop a photo here, or</span>
             <label class="photo-file-label">
               Choose file
               <input type="file" id="edit-image-file-${e.id}" accept="image/*"
-                     onchange="loadEventImageFile('${e.id}', this.files)" style="display:none;">
+                     onchange="loadEventImageFile('${e.id}',this.files)" style="display:none;">
             </label>
           </div>
           <input class="photo-url-input" type="text" id="edit-image-${e.id}"
-                 value="${escapeHtml(e.image || '')}"
-                 placeholder="…or paste a photo URL">
-          <small class="form-help">URL or drag-and-drop file — Save Changes to apply.</small>
+                 value="${escapeHtml(e.image || '')}" placeholder="…or paste a photo URL">
+          <small class="form-help">URL or drag-and-drop — Save Changes to apply.</small>
         </div>
-
         ${commuteHtml ? `<div class="edit-commute-preview">${commuteHtml}</div>` : ''}
         <div class="edit-actions">
-          <button class="btn-save" onclick="saveEdit('${e.id}', '${day.id}')">Save Changes</button>
-          <button class="btn-cancel" onclick="toggleEditMode('${e.id}', '${day.id}')">Cancel</button>
+          <button class="btn-save" onclick="saveEdit('${e.id}','${day.id}')">Save Changes</button>
+          <button class="btn-cancel" onclick="toggleEditMode('${e.id}','${day.id}')">Cancel</button>
         </div>
       </div>
     </div>`;
@@ -291,9 +283,8 @@ function renderCommute(event, day) {
   if (!event.commute) return '';
   const { mode, minutes, note } = event.commute;
   const modeInfo = TRAVEL_MODE_ICONS[mode] || TRAVEL_MODE_ICONS.drive;
-  let mapsHref = '#';
-  if (event.coords) mapsHref = makeDirectionLink(event.commute, event, day);
-  const rtLabel = isOnTripDate(day.date) ? '🔴 Live Traffic' : 'View Route';
+  const mapsHref = event.coords ? makeDirectionLink(event.commute, event, day) : '#';
+  const rtLabel  = isOnTripDate(day.date) ? '🔴 Live Traffic' : 'View Route';
   return `
     <div class="commute-bar">
       <span class="commute-icon">${modeInfo.icon}</span>
@@ -313,9 +304,8 @@ function makeGoogleMapsLink(coords) {
 function makeDirectionLink(commute, event, day) {
   if (!event.coords) return '#';
   const mode    = commute.mode === 'transit' ? 'transit' : commute.mode === 'walk' ? 'walking' : 'driving';
-  const events  = day.events;
-  const myIdx   = events.findIndex(e => e.id === event.id);
-  const prevEvt = events.slice(0, myIdx).reverse().find(e => e.coords);
+  const myIdx   = day.events.findIndex(e => e.id === event.id);
+  const prevEvt = day.events.slice(0, myIdx).reverse().find(e => e.coords);
   if (!prevEvt) return `https://www.google.com/maps/dir/?api=1&destination=${event.coords.lat},${event.coords.lng}&travelmode=${mode}`;
   return `https://www.google.com/maps/dir/?api=1&origin=${prevEvt.coords.lat},${prevEvt.coords.lng}&destination=${event.coords.lat},${event.coords.lng}&travelmode=${mode}`;
 }
@@ -338,6 +328,7 @@ function toggleEditMode(eventId, dayId) {
 
 async function saveEdit(eventId, dayId) {
   if (!currentUser) return;
+
   const newTitle   = document.getElementById('edit-title-'   + eventId)?.value.trim();
   const newDesc    = document.getElementById('edit-desc-'    + eventId)?.value.trim();
   const newTime    = document.getElementById('edit-time-'    + eventId)?.value.trim();
@@ -349,26 +340,27 @@ async function saveEdit(eventId, dayId) {
   const event = day?.events.find(e => e.id === eventId);
   if (!event) return;
 
-  const override = eventOverrides[eventId] || {};
-  const cur      = { ...event, ...override };
-  const updates  = {};
-  const historyPromises = [];
+  const cur     = { ...event, ...(eventOverrides[eventId] || {}) };
+  const updates = {};
+  const hist    = [];
 
-  if (newTitle   && newTitle   !== cur.title)                       { updates.title       = newTitle;        historyPromises.push(saveEditHistory(eventId, dayId, 'title',       cur.title,       newTitle)); }
-  if (newDesc    && newDesc    !== cur.description)                 { updates.description = newDesc;         historyPromises.push(saveEditHistory(eventId, dayId, 'description', cur.description, newDesc)); }
-  if (newTime    !== undefined && newTime    !== (cur.time    || '')) { updates.time    = newTime;    historyPromises.push(saveEditHistory(eventId, dayId, 'time',    cur.time,    newTime)); }
-  if (newCost    !== undefined && newCost    !== (cur.cost    || '')) { updates.cost    = newCost;    historyPromises.push(saveEditHistory(eventId, dayId, 'cost',    cur.cost,    newCost)); }
-  if (newAddress !== undefined && newAddress !== (cur.address || '')) { updates.address = newAddress; historyPromises.push(saveEditHistory(eventId, dayId, 'address', cur.address, newAddress)); }
-  if (newImage   !== undefined && newImage   !== (cur.image  || '')) {
+  if (newTitle   && newTitle   !== cur.title)                       { updates.title       = newTitle;   hist.push(saveEditHistory(eventId, dayId, 'title',       cur.title,       newTitle)); }
+  if (newDesc    && newDesc    !== cur.description)                 { updates.description = newDesc;    hist.push(saveEditHistory(eventId, dayId, 'description', cur.description, newDesc)); }
+  if (newTime    !== undefined && newTime    !== (cur.time    ||'')) { updates.time    = newTime;    hist.push(saveEditHistory(eventId, dayId, 'time',    cur.time,    newTime)); }
+  if (newCost    !== undefined && newCost    !== (cur.cost    ||'')) { updates.cost    = newCost;    hist.push(saveEditHistory(eventId, dayId, 'cost',    cur.cost,    newCost)); }
+  if (newAddress !== undefined && newAddress !== (cur.address ||'')) { updates.address = newAddress; hist.push(saveEditHistory(eventId, dayId, 'address', cur.address, newAddress)); }
+  if (newImage   !== undefined && newImage   !== (cur.image  ||'')) {
     updates.image = newImage || null;
-    historyPromises.push(saveEditHistory(eventId, dayId, 'image', cur.image, newImage || '(removed)'));
+    hist.push(saveEditHistory(eventId, dayId, 'image', cur.image, newImage || '(removed)'));
   }
   if (eventOverrides[eventId]?._pendingCoords) updates.coords = eventOverrides[eventId]._pendingCoords;
 
   if (Object.keys(updates).length === 0) { toggleEditMode(eventId, dayId); return; }
 
-  await Promise.all([saveEventOverride(eventId, updates), ...historyPromises]);
+  // saveEventOverride never throws — safe to await
+  await Promise.all([saveEventOverride(eventId, updates), ...hist]);
 
+  // Re-render
   const container = document.getElementById('event-' + eventId);
   const editPanel = document.getElementById('edit-panel-' + eventId);
   if (container) {
@@ -387,67 +379,49 @@ async function saveEdit(eventId, dayId) {
   showToast(`Saved! Changes to "${newTitle || cur.title}" recorded.`);
 }
 
-// ─── Place search — name field autocomplete ────────────────
-// Searches Nominatim biased to Seattle / Kirkland / Bellevue area.
-// Selecting a result fills name + address + drops a map pin.
+// ─── Place search (name field) ─────────────────────────────
 const _titleDebounce = {};
 const _placeResults  = {};
 
 function onTitleInput(eventId, value) {
   clearTimeout(_titleDebounce[eventId]);
-  const suggestionsEl = document.getElementById('title-suggestions-' + eventId);
-  if (!value || value.length < 2) {
-    if (suggestionsEl) suggestionsEl.innerHTML = '';
-    return;
-  }
+  const el = document.getElementById('title-suggestions-' + eventId);
+  if (!value || value.length < 2) { if (el) el.innerHTML = ''; return; }
 
   _titleDebounce[eventId] = setTimeout(async () => {
     try {
-      // viewbox covers Seattle / Bellevue / Kirkland / Redmond; bounded=0 still searches wider if no local hits
-      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(value)}&limit=6&viewbox=-122.55,47.25,-121.85,47.85&bounded=0&addressdetails=1`;
-      const res  = await fetch(url, { headers: { 'Accept-Language': 'en' } });
-      const data = await res.json();
-
-      if (!suggestionsEl) return;
-      if (!data || data.length === 0) { suggestionsEl.innerHTML = ''; return; }
-
+      const url  = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(value)}&limit=6&viewbox=-122.55,47.25,-121.85,47.85&bounded=0&addressdetails=1`;
+      const data = await fetch(url, { headers: { 'Accept-Language': 'en' } }).then(r => r.json());
+      if (!el) return;
+      if (!data?.length) { el.innerHTML = ''; return; }
       _placeResults[eventId] = data;
-
-      suggestionsEl.innerHTML = data.map((item, idx) => {
+      el.innerHTML = data.map((item, idx) => {
         const parts = item.display_name.split(',');
         const name  = parts[0].trim();
         const sub   = parts.slice(1, 3).join(',').trim();
-        return `<div class="addr-suggestion" onclick="selectPlace('${eventId}', ${idx})">
-          📍 <strong>${escapeHtml(name)}</strong>${sub ? `<small style="opacity:0.6;margin-left:4px;">${escapeHtml(sub)}</small>` : ''}
+        return `<div class="addr-suggestion" onclick="selectPlace('${eventId}',${idx})">
+          📍 <strong>${escapeHtml(name)}</strong>${sub ? `<small style="opacity:0.6;margin-left:5px;">${escapeHtml(sub)}</small>` : ''}
         </div>`;
       }).join('');
-    } catch (_) { /* fail silently */ }
+    } catch (_) {}
   }, 380);
 }
 
 function selectPlace(eventId, idx) {
   const item = (_placeResults[eventId] || [])[idx];
   if (!item) return;
-
-  const titleInput = document.getElementById('edit-title-'         + eventId);
-  const addrInput  = document.getElementById('edit-address-'       + eventId);
-  const titleSugg  = document.getElementById('title-suggestions-'  + eventId);
-
-  const name = item.display_name.split(',')[0].trim();
-
-  // Build a clean readable address from addressdetails
-  const a    = item.address || {};
-  const addr = [a.house_number, a.road, a.city || a.town || a.village || a.suburb]
-    .filter(Boolean).join(' ') || item.display_name.split(',').slice(0, 3).join(',').trim();
-
-  if (titleInput) titleInput.value = name;
-  if (addrInput)  addrInput.value  = addr;
-  if (titleSugg)  titleSugg.innerHTML = '';
-
-  // Store coords so Save Changes can persist them
+  const titleEl = document.getElementById('edit-title-'        + eventId);
+  const addrEl  = document.getElementById('edit-address-'      + eventId);
+  const suggEl  = document.getElementById('title-suggestions-' + eventId);
+  const name    = item.display_name.split(',')[0].trim();
+  const a       = item.address || {};
+  const addr    = [a.house_number, a.road, a.city || a.town || a.village || a.suburb].filter(Boolean).join(' ')
+                  || item.display_name.split(',').slice(0, 3).join(',').trim();
+  if (titleEl) titleEl.value = name;
+  if (addrEl)  addrEl.value  = addr;
+  if (suggEl)  suggEl.innerHTML = '';
   eventOverrides[eventId] = eventOverrides[eventId] || {};
   eventOverrides[eventId]._pendingCoords = { lat: parseFloat(item.lat), lng: parseFloat(item.lon) };
-
   showEditMap(eventId, parseFloat(item.lat), parseFloat(item.lon), name);
   showToast(`Found: ${name}`);
 }
@@ -457,28 +431,25 @@ const _addrDebounce = {};
 
 function onAddressInput(eventId, value) {
   clearTimeout(_addrDebounce[eventId]);
-  const suggestionsEl = document.getElementById('addr-suggestions-' + eventId);
-  if (!value || value.length < 3) { if (suggestionsEl) suggestionsEl.innerHTML = ''; return; }
-
+  const el = document.getElementById('addr-suggestions-' + eventId);
+  if (!value || value.length < 3) { if (el) el.innerHTML = ''; return; }
   _addrDebounce[eventId] = setTimeout(async () => {
     try {
-      const url  = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(value)}&limit=5&countrycodes=us`;
-      const res  = await fetch(url, { headers: { 'Accept-Language': 'en' } });
-      const data = await res.json();
-      if (!suggestionsEl) return;
-      suggestionsEl.innerHTML = (data || []).map(item => {
+      const data = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(value)}&limit=5&countrycodes=us`, { headers: { 'Accept-Language': 'en' } }).then(r => r.json());
+      if (!el) return;
+      el.innerHTML = (data || []).map(item => {
         const label = item.display_name.split(',').slice(0, 3).join(',');
-        return `<div class="addr-suggestion" onclick="selectAddress('${eventId}', '${escapeHtml(label).replace(/'/g,"\\'")}', ${item.lat}, ${item.lon})">📍 ${escapeHtml(label)}</div>`;
+        return `<div class="addr-suggestion" onclick="selectAddress('${eventId}','${escapeHtml(label).replace(/'/g,"\\'")}',${item.lat},${item.lon})">📍 ${escapeHtml(label)}</div>`;
       }).join('');
     } catch (_) {}
   }, 450);
 }
 
 function selectAddress(eventId, address, lat, lng) {
-  const input        = document.getElementById('edit-address-'      + eventId);
-  const suggestionsEl = document.getElementById('addr-suggestions-' + eventId);
+  const input = document.getElementById('edit-address-'      + eventId);
+  const el    = document.getElementById('addr-suggestions-'  + eventId);
   if (input) input.value = address;
-  if (suggestionsEl) suggestionsEl.innerHTML = '';
+  if (el)    el.innerHTML = '';
   eventOverrides[eventId] = eventOverrides[eventId] || {};
   eventOverrides[eventId]._pendingCoords = { lat: parseFloat(lat), lng: parseFloat(lng) };
   showEditMap(eventId, parseFloat(lat), parseFloat(lng), address);
@@ -497,37 +468,50 @@ function showEditMap(eventId, lat, lng, title) {
   setTimeout(() => map.invalidateSize(), 100);
 }
 
-// ─── Photo file picker ─────────────────────────────────────
-function loadEventImageFile(eventId, files) {
-  const file = files && files[0];
-  if (!file) return;
-  if (!file.type.startsWith('image/')) { showToast('Please choose an image file.'); return; }
+// ─── Photo helpers — compress via canvas before storing ────
+function compressToDataUrl(file, cb) {
   const reader = new FileReader();
-  reader.onload = () => {
-    const input = document.getElementById('edit-image-' + eventId);
-    if (input) input.value = reader.result;
-    showToast('Photo attached. Save Changes to use it.');
+  reader.onload = ev => {
+    const img = new Image();
+    img.onload = () => {
+      let w = img.width, h = img.height;
+      const MAX_W = 1200, MAX_H = 500;
+      if (w > MAX_W) { h = Math.round(h * MAX_W / w); w = MAX_W; }
+      if (h > MAX_H) { w = Math.round(w * MAX_H / h); h = MAX_H; }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      cb(canvas.toDataURL('image/jpeg', 0.82));
+    };
+    img.onerror = () => cb(ev.target.result);
+    img.src = ev.target.result;
   };
   reader.onerror = () => showToast('Could not read that photo.');
   reader.readAsDataURL(file);
 }
 
-// ─── Photo drag-and-drop ───────────────────────────────────
+function loadEventImageFile(eventId, files) {
+  const file = files && files[0];
+  if (!file) return;
+  if (!file.type.startsWith('image/')) { showToast('Please choose an image file.'); return; }
+  compressToDataUrl(file, dataUrl => {
+    const input = document.getElementById('edit-image-' + eventId);
+    if (input) input.value = dataUrl;
+    showToast('Photo attached. Save Changes to use it.');
+  });
+}
+
 function handlePhotoDrop(eventId, event) {
   event.preventDefault();
-  const dropZone = document.getElementById('photo-drop-' + eventId);
-  if (dropZone) dropZone.classList.remove('drag-over');
+  document.getElementById('photo-drop-' + eventId)?.classList.remove('drag-over');
   const file = event.dataTransfer?.files?.[0];
   if (!file) return;
   if (!file.type.startsWith('image/')) { showToast('Please drop an image file.'); return; }
-  const reader = new FileReader();
-  reader.onload = () => {
+  compressToDataUrl(file, dataUrl => {
     const input = document.getElementById('edit-image-' + eventId);
-    if (input) input.value = reader.result;
+    if (input) input.value = dataUrl;
     showToast('Photo attached — Save Changes to apply.');
-  };
-  reader.onerror = () => showToast('Could not read that photo.');
-  reader.readAsDataURL(file);
+  });
 }
 
 // ─── Map toggling ──────────────────────────────────────────
@@ -540,8 +524,8 @@ function toggleMap(eventId) {
   if (btn) btn.textContent = isHidden ? '🗺️ Hide Map' : '🗺️ Show on Map';
   if (isHidden) {
     if (!container.dataset.initialized) {
-      const event = findEventById(eventId);
-      if (event?.coords) { initMiniMap(eventId, event.coords.lat, event.coords.lng, event.title); container.dataset.initialized = '1'; }
+      const ev = findEventById(eventId);
+      if (ev?.coords) { initMiniMap(eventId, ev.coords.lat, ev.coords.lng, ev.title); container.dataset.initialized = '1'; }
     } else {
       const map = mapInstances[eventId];
       if (map) setTimeout(() => map.invalidateSize(), 50);
@@ -559,15 +543,13 @@ function renderReservationBanner() {
   ).join('');
 }
 
-// ─── Auto-scroll to today ──────────────────────────────────
 function autoScrollToToday() {
   const today   = new Date().toISOString().slice(0, 10);
   const tripDay = ITINERARY.find(d => d.date === today);
   if (!tripDay) return;
-  setTimeout(() => { document.getElementById(tripDay.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 700);
+  setTimeout(() => document.getElementById(tripDay.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 700);
 }
 
-// ─── Scroll helpers ────────────────────────────────────────
 function scrollToDay(dayId) {
   const el = document.getElementById(dayId);
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -578,7 +560,7 @@ function setupScrollSpy() {
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(e => {
       if (e.isIntersecting) {
-        document.querySelectorAll('.nav-day-btn').forEach(btn => btn.classList.remove('active'));
+        document.querySelectorAll('.nav-day-btn').forEach(b => b.classList.remove('active'));
         document.getElementById('nav-btn-' + e.target.id)?.classList.add('active');
       }
     });
@@ -606,9 +588,8 @@ function closeModal(id) { document.getElementById(id)?.classList.remove('open');
 
 document.addEventListener('click', e => {
   if (e.target.classList.contains('modal-overlay')) e.target.classList.remove('open');
-  if (!e.target.closest('.address-autocomplete-wrap')) {
+  if (!e.target.closest('.address-autocomplete-wrap'))
     document.querySelectorAll('.address-suggestions').forEach(el => el.innerHTML = '');
-  }
 });
 
 document.addEventListener('keydown', e => {
@@ -620,8 +601,7 @@ function showToast(msg) {
   let toast = document.getElementById('toast');
   if (!toast) {
     toast = document.createElement('div');
-    toast.id = 'toast';
-    toast.className = 'toast';
+    toast.id = 'toast'; toast.className = 'toast';
     document.body.appendChild(toast);
   }
   toast.textContent = msg;
@@ -629,7 +609,7 @@ function showToast(msg) {
   setTimeout(() => toast.classList.remove('visible'), 3000);
 }
 
-// ─── Format helpers ────────────────────────────────────────
+// ─── Helpers ───────────────────────────────────────────────
 function formatTime(timeStr) {
   if (!timeStr) return '';
   const trimmed = timeStr.trim();
@@ -639,9 +619,9 @@ function formatTime(timeStr) {
   if (!match) return timeStr;
   let hour = parseInt(match[1], 10);
   const min = match[2];
-  const explicitMeridiem = match[3] ? match[3].toUpperCase() : null;
-  if (explicitMeridiem === 'PM' && hour < 12) hour += 12;
-  if (explicitMeridiem === 'AM' && hour === 12) hour = 0;
+  const mer = match[3]?.toUpperCase() || null;
+  if (mer === 'PM' && hour < 12) hour += 12;
+  if (mer === 'AM' && hour === 12) hour = 0;
   return `${prefix}${hour % 12 || 12}:${min} ${hour >= 12 ? 'PM' : 'AM'}`;
 }
 
