@@ -507,7 +507,11 @@ async function loadEventOverrides() {
     try {
       const { data } = await supabase.from('event_overrides').select('*');
       // Supabase data wins over localStorage for any row that exists in both
-      if (data) data.forEach(row => { eventOverrides[row.event_id] = row.data; });
+      if (data) {
+        data.forEach(row => { eventOverrides[row.event_id] = row.data; });
+        // Cache Supabase data locally so all devices stay in sync across sessions
+        try { localStorage.setItem('kims_overrides', JSON.stringify(eventOverrides)); } catch (_) {}
+      }
     } catch (e) {
       console.warn('Could not load event overrides from Supabase, using localStorage data.', e);
     }
@@ -527,9 +531,14 @@ async function saveEventOverride(eventId, updates) {
 
   if (USE_SUPABASE) {
     try {
+      // Strip data: URLs before syncing — they're device-local file uploads and too large for cross-device sync
+      const supabaseData = { ...eventOverrides[eventId] };
+      if (supabaseData.image && supabaseData.image.startsWith('data:')) {
+        delete supabaseData.image;
+      }
       await supabase.from('event_overrides').upsert({
         event_id:        eventId,
-        data:            eventOverrides[eventId],
+        data:            supabaseData,
         updated_at:      new Date().toISOString(),
         updated_by_name: currentUser?.name || 'unknown',
       });
@@ -766,4 +775,3 @@ function _renderCommentHistoryList() {
       </div>`;
   }).join('');
 }
-
