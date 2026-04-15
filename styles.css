@@ -170,8 +170,7 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
 }
 .admin-bar-btn.primary:hover { background: #1a5c80; }
 @media (max-width: 600px) {
-  .admin-sync-bar { top: 56px; gap: 6px; padding: 6px 12px; }
-  .admin-bar-btn  { font-size: 0.72rem; padding: 4px 10px; }
+  .admin-sync-bar { display: none !important; }
 }
 
 /* ─── Sync status dot ────────────────────────────────────── */
