@@ -390,15 +390,21 @@ async function openHistoryModal(eventId, eventName) {
 const eventOverrides = {};
 
 async function loadEventOverrides() {
+  // Load localStorage first as baseline
   try {
-    if (USE_SUPABASE) {
+    const stored = localStorage.getItem('kims_overrides');
+    if (stored) Object.assign(eventOverrides, JSON.parse(stored));
+  } catch (_) {}
+
+  // Overlay with Supabase data (source of truth for cross-device)
+  if (USE_SUPABASE) {
+    try {
       const { data } = await supabase.from('event_overrides').select('*');
-      if (data) data.forEach(row => { eventOverrides[row.event_id] = row.data; });
-    } else {
-      const stored = localStorage.getItem('kims_overrides');
-      if (stored) Object.assign(eventOverrides, JSON.parse(stored));
-    }
-  } catch (e) { console.warn('Could not load overrides:', e); }
+      if (data) data.forEach(row => {
+        eventOverrides[row.event_id] = { ...(eventOverrides[row.event_id] || {}), ...row.data };
+      });
+    } catch (e) { console.warn('Could not load overrides from Supabase, using localStorage:', e); }
+  }
 }
 
 async function saveEventOverride(eventId, updates) {
