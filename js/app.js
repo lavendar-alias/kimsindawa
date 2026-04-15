@@ -71,7 +71,7 @@ function renderNav() {
       <span class="nav-day-label">Apr ${day.date.split('-')[2]}</span>
     </button>`).join('');
 
-  // Inject search + comment history buttons into nav-auth area before the auth button
+  // Inject search + comment history + sync buttons into nav-auth area before the auth button
   const authArea = document.getElementById('userInfo');
   if (authArea && !document.getElementById('searchBtn')) {
     const searchBtn = document.createElement('button');
@@ -90,6 +90,15 @@ function renderNav() {
     btn.title = 'All Comments';
     btn.onclick = openCommentHistoryModal;
     authArea.parentNode.insertBefore(btn, authArea);
+  }
+  if (authArea && !document.getElementById('syncStatusDot')) {
+    const dot = document.createElement('span');
+    dot.id = 'syncStatusDot';
+    dot.className = 'sync-status-dot';
+    dot.title = 'Checking sync…';
+    dot.dataset.status = 'pending';
+    dot.onclick = forceRefreshFromServer;
+    authArea.parentNode.insertBefore(dot, authArea);
   }
 }
 
@@ -979,7 +988,7 @@ function setupScrollSpy() {
 }
 
 // ─── Inline comments ──────────────────────────────────────
-function toggleComments(eventId, dayId, eventName) {
+function toggleComments(eventId, dayId, _eventName) {
   const body  = document.getElementById('comments-body-' + eventId);
   const arrow = document.getElementById('comment-arrow-' + eventId);
   if (!body) return;
@@ -1242,6 +1251,33 @@ function jumpToStop(eventId, dayId) {
   }, 220);
 }
 
+// ─── Force reload all data from Supabase ───────────────────
+async function forceRefreshFromServer() {
+  const dot = document.getElementById('syncStatusDot');
+  if (dot) { dot.dataset.status = 'pending'; dot.title = 'Refreshing…'; }
+  showToast('Refreshing from server…');
+
+  // Clear in-memory caches
+  Object.keys(eventOverrides).forEach(k => delete eventOverrides[k]);
+  Object.keys(commentsCache).forEach(k => delete commentsCache[k]);
+
+  try {
+    await loadEventOverrides();
+  } catch (e) {
+    console.warn('Force refresh failed:', e);
+  }
+
+  extractDayOrders();
+  renderAllDays();
+  updateAuthUI();
+  refreshCommentCounts();
+  refreshUnreadBadge();
+
+  // Reload comments for all visible days
+  ITINERARY.forEach(day => loadCommentsForDay(day.id));
+  showToast('Refreshed from server ✓');
+}
+
 // ─── Edit panel: open address in Google Maps live ──────────
 function openMapsForEdit(eventId) {
   const addressInput = document.getElementById('edit-address-' + eventId);
@@ -1255,3 +1291,4 @@ function openMapsForEdit(eventId) {
   }
   if (url) window.open(url, '_blank');
 }
+
