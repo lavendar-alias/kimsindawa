@@ -126,6 +126,148 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
 }
 .btn-auth:hover { background: rgba(255,255,255,0.25); }
 
+/* ─── Search nav button ──────────────────────────────────── */
+.btn-nav-search {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.12);
+  color: var(--white);
+  font-size: 0.9rem;
+  border: 1px solid rgba(255,255,255,0.2);
+  transition: var(--transition);
+  flex-shrink: 0;
+}
+.btn-nav-search:hover { background: rgba(255,255,255,0.25); }
+
+/* ─── Search overlay ─────────────────────────────────────── */
+.search-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 250;
+  display: none;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 80px 16px 20px;
+  backdrop-filter: blur(4px);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.search-overlay.open { opacity: 1; }
+.search-inner {
+  background: var(--white);
+  border-radius: var(--radius);
+  width: 100%;
+  max-width: 560px;
+  max-height: 72vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  overflow: hidden;
+}
+.search-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--fog);
+  flex-shrink: 0;
+}
+.search-icon-glyph { font-size: 1rem; flex-shrink: 0; opacity: 0.6; }
+.search-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  color: var(--charcoal);
+  background: transparent;
+}
+.search-close-btn {
+  color: var(--mid);
+  font-size: 1.3rem;
+  padding: 2px 7px;
+  border-radius: 6px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: var(--transition);
+}
+.search-close-btn:hover { background: var(--fog); color: var(--charcoal); }
+.search-results {
+  overflow-y: auto;
+  padding: 6px;
+  flex: 1;
+}
+.search-no-results {
+  text-align: center;
+  padding: 28px 16px;
+  color: var(--mid);
+  font-size: 0.88rem;
+  font-style: italic;
+}
+.search-result-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--transition);
+}
+.search-result-item:hover { background: var(--light); }
+.sr-icon { font-size: 1.1rem; flex-shrink: 0; }
+.sr-body { flex: 1; min-width: 0; }
+.sr-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--charcoal);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sr-meta {
+  font-size: 0.74rem;
+  color: var(--mid);
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  overflow: hidden;
+}
+.sr-addr {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sr-links { display: flex; gap: 4px; flex-shrink: 0; }
+.sr-link {
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: var(--light);
+  font-size: 0.85rem;
+  transition: background var(--transition);
+  text-decoration: none;
+  color: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.sr-link:hover { background: var(--fog); }
+
+/* ─── Stop highlight flash on jump ──────────────────────── */
+.stop-highlight {
+  animation: stopFlash 1.6s ease-out forwards;
+}
+@keyframes stopFlash {
+  0%   { box-shadow: 0 0 0 3px var(--amber), var(--shadow-md); }
+  60%  { box-shadow: 0 0 0 3px var(--amber), var(--shadow-md); }
+  100% { box-shadow: var(--shadow); }
+}
+
 /* ─── Comments nav button + unread badge ─────────────────── */
 .btn-nav-comments {
   display: inline-flex;
@@ -623,6 +765,51 @@ a.res-chip:hover { background: rgba(255,255,255,0.25); }
   position: relative;
 }
 .action-btn:hover { background: var(--fog); color: var(--charcoal); }
+.move-btn { font-size: 0.8rem; font-weight: 700; }
+.move-btn:hover { background: var(--lake); color: var(--white); }
+
+/* ─── External quick links row under address ─────────────── */
+.event-ext-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 4px 0 10px;
+}
+.event-ext-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.74rem;
+  font-weight: 500;
+  color: var(--lake);
+  padding: 3px 9px;
+  border-radius: 20px;
+  background: rgba(30,77,107,0.07);
+  border: 1px solid rgba(30,77,107,0.12);
+  transition: var(--transition);
+  white-space: nowrap;
+  text-decoration: none;
+}
+.event-ext-link:hover { background: rgba(30,77,107,0.16); color: var(--pine); }
+
+/* ─── Edit panel external link buttons ───────────────────── */
+.edit-ext-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.76rem;
+  font-weight: 500;
+  color: var(--lake);
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(30,77,107,0.07);
+  border: 1px solid rgba(30,77,107,0.12);
+  transition: var(--transition);
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+}
+.edit-ext-btn:hover { background: rgba(30,77,107,0.15); }
 
 .comment-badge {
   position: absolute;
@@ -1434,7 +1621,7 @@ a.res-chip:hover { background: rgba(255,255,255,0.25); }
   /* Hide reservation banner on mobile — sticky day indicator replaces it */
   .checklist-banner { display: none !important; }
 
-  .navbar { padding: 0 12px; }
+  .navbar { padding: 0 10px; gap: 6px; }
   .nav-brand span:last-child { display: none; }
   .hero-stats { gap: 24px; }
   .stat-number { font-size: 1.8rem; }
@@ -1447,6 +1634,16 @@ a.res-chip:hover { background: rgba(255,255,255,0.25); }
   .diff-arrow { display: none; }
   .event-photo-wrap { height: 170px; }
   .day-sticky-indicator { top: 60px; }
+
+  /* Search overlay — full width on mobile */
+  .search-overlay { padding: 70px 10px 16px; }
+  .search-inner { max-height: 80vh; }
+
+  /* External links — smaller text on mobile */
+  .event-ext-link { font-size: 0.7rem; padding: 2px 7px; }
+
+  /* Move buttons — slightly smaller */
+  .action-btn { width: 28px; height: 28px; font-size: 0.8rem; }
 }
 
 /* ─── Nickname modal ─────────────────────────────────────── */
@@ -1561,4 +1758,3 @@ a.res-chip:hover { background: rgba(255,255,255,0.25); }
 
 /* ─── Selection ──────────────────────────────────────────── */
 ::selection { background: rgba(30,77,107,0.2); }
-
