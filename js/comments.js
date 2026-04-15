@@ -9,7 +9,22 @@ let activeEventName = null;
 const commentsCache = {};
 
 function getLocalComments(dayId) {
-  return JSON.parse(localStorage.getItem('kims_comments_' + dayId) || '{}');
+  try {
+    return JSON.parse(localStorage.getItem('kims_comments_' + dayId) || '{}');
+  } catch (_) {
+    return {};
+  }
+}
+
+function mergeCommentsIntoCache(data) {
+  Object.entries(data || {}).forEach(([eventId, comments]) => {
+    if (!commentsCache[eventId]) commentsCache[eventId] = [];
+    (comments || []).forEach(comment => {
+      if (!commentsCache[eventId].find(existing => existing.id === comment.id)) {
+        commentsCache[eventId].push(comment);
+      }
+    });
+  });
 }
 
 function saveLocalComment(dayId, eventId, comment) {
@@ -19,65 +34,30 @@ function saveLocalComment(dayId, eventId, comment) {
   localStorage.setItem('kims_comments_' + dayId, JSON.stringify(stored));
 }
 
-function ensureCurrentUserFromName(name) {
-  const clean = (name || '').trim();
-  if (!clean) return false;
-  if (currentUser?.name === clean) return true;
-
-  let deviceId = localStorage.getItem('kims_device_id');
-  if (!deviceId) {
-    deviceId = 'device-' + Math.random().toString(36).slice(2, 10);
-    localStorage.setItem('kims_device_id', deviceId);
-  }
-
-  currentUser = { id: deviceId, name: clean };
-  localStorage.setItem('kims_trip_nickname', JSON.stringify(currentUser));
-  if (typeof updateAuthUI === 'function') updateAuthUI();
-  return true;
-}
-
 // ─── Load comments for a day (batch fetch) ─────────────────
 async function loadCommentsForDay(dayId) {
+  mergeCommentsIntoCache(getLocalComments(dayId));
+
   if (USE_SUPABASE) {
-    try {
-      const { data, error } = await supabase
-        .from('comments')
-        .select('*')
-        .eq('day_id', dayId)
-        .order('created_at', { ascending: true });
+    const { data, error } = await supabase
+      .from('comments')
+      .select('*')
+      .eq('day_id', dayId)
+      .order('created_at', { ascending: true });
 
-      if (!error && data) {
-        data.forEach(c => {
-          if (!commentsCache[c.event_id]) commentsCache[c.event_id] = [];
-          if (!commentsCache[c.event_id].find(x => x.id === c.id)) {
-            commentsCache[c.event_id].push(c);
-          }
-        });
-      }
-    } catch (e) {
-      console.warn('Could not load Supabase comments, using local cache only.', e);
-    }
-
-    // Keep locally-fallback comments available even when Supabase is enabled.
-    const localData = getLocalComments(dayId);
-    Object.entries(localData).forEach(([eventId, comments]) => {
-      if (!commentsCache[eventId]) commentsCache[eventId] = [];
-      comments.forEach(c => {
-        if (!commentsCache[eventId].find(x => x.id === c.id)) {
-          commentsCache[eventId].push(c);
+    if (!error && data) {
+      data.forEach(c => {
+        if (!commentsCache[c.event_id]) commentsCache[c.event_id] = [];
+        if (!commentsCache[c.event_id].find(x => x.id === c.id)) {
+          commentsCache[c.event_id].push(c);
         }
       });
-    });
-  } else {
-    // localStorage fallback
-    const data = getLocalComments(dayId);
-    Object.assign(commentsCache, data);
+    } else if (error) {
+      console.error('Comment load error:', error);
+      showToast('Comments are loading from this device only right now.');
+    }
   }
   refreshCommentCounts();
-
-  // Render side-comment rails for this day so comment boxes are always available.
-  const day = ITINERARY.find(d => d.id === dayId);
-  if (day) day.events.forEach(evt => renderInlineComments(evt.id));
 }
 
 // ─── Refresh comment count badges ──────────────────────────
@@ -130,22 +110,9 @@ function renderInlineComments(eventId) {
       </div>`;
   } else {
     formEl.innerHTML = `
-      <div class="inline-comment-form" id="guest-comment-form-${eventId}">
-        <div class="inline-form-avatar">?</div>
-        <div class="inline-form-right">
-          <input class="inline-comment-input" id="inline-name-${eventId}" placeholder="Your name" />
-          <textarea class="inline-comment-input" id="inline-text-${eventId}"
-                    placeholder="Leave a comment for this stop…" rows="2"></textarea>
-          <div class="inline-form-actions">
-            <label class="radio-label-sm">
-              <input type="radio" name="itype-${eventId}" value="comment" checked> 💬 Comment
-            </label>
-            <label class="radio-label-sm">
-              <input type="radio" name="itype-${eventId}" value="suggestion"> 💡 Suggestion
-            </label>
-            <button class="btn-post-comment" onclick="submitInlineCommentWithName('${eventId}')">Post</button>
-          </div>
-        </div>
+      <div class="inline-login-prompt">
+        <p>Enter a name to leave a comment.</p>
+        <button class="btn-enter-name" onclick="openAuthModal()">Enter my name ✏️</button>
       </div>`;
   }
 }
@@ -208,57 +175,29 @@ function showReplyForm(parentId, eventId, parentAuthor) {
   }
 
   if (!currentUser) {
-    slot.innerHTML = `
-      <div class="reply-form">
-        <div class="inline-form-avatar small">?</div>
-        <div class="inline-form-right">
-          <input class="inline-comment-input small" id="reply-name-${parentId}" placeholder="Your name" />
-          <textarea class="inline-comment-input small" id="reply-text-${parentId}"
-                    placeholder="Replying to ${escapeHtml(parentAuthor)}…" rows="2"></textarea>
-          <div class="inline-form-actions">
-            <button class="btn-post-comment small" onclick="submitReplyWithName('${parentId}', '${eventId}')">Reply</button>
-            <button class="btn-cancel-reply" onclick="document.getElementById('reply-slot-${parentId}').innerHTML=''">Cancel</button>
-          </div>
-        </div>
-      </div>`;
-  } else {
-    slot.innerHTML = `
-      <div class="reply-form">
-        <div class="inline-form-avatar small">${getInitials(currentUser.name)}</div>
-        <div class="inline-form-right">
-          <textarea class="inline-comment-input small" id="reply-text-${parentId}"
-                    placeholder="Replying to ${escapeHtml(parentAuthor)}…" rows="2"></textarea>
-          <div class="inline-form-actions">
-            <button class="btn-post-comment small" onclick="submitReply('${parentId}', '${eventId}')">Reply</button>
-            <button class="btn-cancel-reply" onclick="document.getElementById('reply-slot-${parentId}').innerHTML=''">Cancel</button>
-          </div>
-        </div>
-      </div>`;
+    openAuthModal();
+    return;
   }
+
+  slot.innerHTML = `
+    <div class="reply-form">
+      <div class="inline-form-avatar small">${getInitials(currentUser.name)}</div>
+      <div class="inline-form-right">
+        <textarea class="inline-comment-input small" id="reply-text-${parentId}"
+                  placeholder="Replying to ${escapeHtml(parentAuthor)}…" rows="2"></textarea>
+        <div class="inline-form-actions">
+          <button class="btn-post-comment small" onclick="submitReply('${parentId}', '${eventId}')">Reply</button>
+          <button class="btn-cancel-reply" onclick="document.getElementById('reply-slot-${parentId}').innerHTML=''">Cancel</button>
+        </div>
+      </div>
+    </div>`;
 
   setTimeout(() => document.getElementById('reply-text-' + parentId)?.focus(), 50);
 }
 
 // ─── Submit a new top-level comment ───────────────────────
-async function submitInlineCommentWithName(eventId) {
-  if (!currentUser) {
-    const nameInput = document.getElementById('inline-name-' + eventId);
-    if (!ensureCurrentUserFromName(nameInput?.value)) {
-      nameInput?.focus();
-      return;
-    }
-  }
-  return submitInlineComment(eventId);
-}
-
 async function submitInlineComment(eventId) {
-  if (!currentUser) {
-    const nameInput = document.getElementById('inline-name-' + eventId);
-    if (!ensureCurrentUserFromName(nameInput?.value)) {
-      nameInput?.focus();
-      return;
-    }
-  }
+  if (!currentUser) { openAuthModal(); return; }
 
   const textarea = document.getElementById('inline-text-' + eventId);
   const content  = textarea?.value.trim();
@@ -282,25 +221,8 @@ async function submitInlineComment(eventId) {
 }
 
 // ─── Submit a reply ────────────────────────────────────────
-async function submitReplyWithName(parentId, eventId) {
-  if (!currentUser) {
-    const nameInput = document.getElementById('reply-name-' + parentId);
-    if (!ensureCurrentUserFromName(nameInput?.value)) {
-      nameInput?.focus();
-      return;
-    }
-  }
-  return submitReply(parentId, eventId);
-}
-
 async function submitReply(parentId, eventId) {
-  if (!currentUser) {
-    const nameInput = document.getElementById('reply-name-' + parentId);
-    if (!ensureCurrentUserFromName(nameInput?.value)) {
-      nameInput?.focus();
-      return;
-    }
-  }
+  if (!currentUser) { openAuthModal(); return; }
 
   const textarea = document.getElementById('reply-text-' + parentId);
   const content  = textarea?.value.trim();
@@ -334,44 +256,35 @@ async function _saveComment({ eventId, dayId, content, type, parentId }) {
   };
 
   if (USE_SUPABASE) {
-    try {
-      const payload = {
-        event_id:  comment.event_id,
-        day_id:    comment.day_id,
-        user_name: comment.user_name,
-        content:   comment.content,
-        type:      comment.type,
-      };
-      if (comment.parent_id) payload.parent_id = comment.parent_id;
+    const payload = {
+      event_id:  comment.event_id,
+      day_id:    comment.day_id,
+      user_name: comment.user_name,
+      content:   comment.content,
+      type:      comment.type,
+    };
+    if (comment.parent_id) payload.parent_id = comment.parent_id;
 
-      const { data, error } = await supabase
-        .from('comments')
-        .insert(payload)
-        .select()
-        .single();
+    const { data, error } = await supabase
+      .from('comments')
+      .insert(payload)
+      .select()
+      .single();
 
-      if (error) {
-        console.error('Comment save error:', error);
-        saveLocalComment(dayId, eventId, comment);
-        showToast('Saved locally on this device (Supabase comment policy blocked this insert).');
-        return comment;
-      }
-      comment.id = data.id;
-    } catch (e) {
-      console.error('Comment save threw exception, falling back to local.', e);
+    if (error) {
+      console.error('Comment save error:', error);
       saveLocalComment(dayId, eventId, comment);
-      showToast('Saved locally on this device (network/server issue).');
+      showToast('Saved on this device. Supabase still needs one more fix.');
       return comment;
     }
+    Object.assign(comment, data);
   } else {
-    // localStorage
     saveLocalComment(dayId, eventId, comment);
   }
 
   return comment;
 }
 
-// ─── Legacy modal comment support (kept for backward compat) ─
 async function openCommentModal(eventId, eventName, dayId) {
   // Redirect to inline view
   const body = document.getElementById('comments-body-' + eventId);
@@ -482,35 +395,30 @@ async function loadEventOverrides() {
     if (USE_SUPABASE) {
       const { data } = await supabase.from('event_overrides').select('*');
       if (data) data.forEach(row => { eventOverrides[row.event_id] = row.data; });
+    } else {
+      const stored = localStorage.getItem('kims_overrides');
+      if (stored) Object.assign(eventOverrides, JSON.parse(stored));
     }
-    // Always merge local fallback overrides too.
-    const stored = localStorage.getItem('kims_overrides');
-    if (stored) Object.assign(eventOverrides, JSON.parse(stored));
   } catch (e) {
     console.warn('Could not load event overrides, continuing without them.', e);
-    const stored = localStorage.getItem('kims_overrides');
-    if (stored) Object.assign(eventOverrides, JSON.parse(stored));
   }
 }
 
 async function saveEventOverride(eventId, updates) {
-  Object.assign(eventOverrides, { [eventId]: { ...(eventOverrides[eventId] || {}), ...updates } });
+  const nextOverride = { ...(eventOverrides[eventId] || {}), ...updates };
+  delete nextOverride._pendingCoords;
+  Object.assign(eventOverrides, { [eventId]: nextOverride });
 
   if (USE_SUPABASE) {
-    try {
-      const { error } = await supabase.from('event_overrides').upsert({
-        event_id:        eventId,
-        data:            eventOverrides[eventId],
-        updated_at:      new Date().toISOString(),
-        updated_by_name: currentUser?.name || 'unknown',
-      });
-      if (error) throw error;
-    } catch (e) {
-      console.warn('Could not save override to Supabase, keeping local fallback.', e);
-      showToast('Saved locally on this device (Supabase blocked image/edit save).');
-    }
+    await supabase.from('event_overrides').upsert({
+      event_id:        eventId,
+      data:            eventOverrides[eventId],
+      updated_at:      new Date().toISOString(),
+      updated_by_name: currentUser?.name || 'unknown',
+    });
+  } else {
+    localStorage.setItem('kims_overrides', JSON.stringify(eventOverrides));
   }
-  localStorage.setItem('kims_overrides', JSON.stringify(eventOverrides));
 }
 
 // ─── Utilities ─────────────────────────────────────────────
