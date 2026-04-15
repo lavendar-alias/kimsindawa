@@ -28,7 +28,7 @@ function markSeen(ids) {
 }
 function markAllSeen() {
   const all = [];
-  Object.values(commentsCache).forEach(list => list.forEach(c => all.push(c.id)));
+  Object.values(commentsCache).forEach(list => list.forEach(c => all.push(String(c.id))));
   markSeen(all);
 }
 // Called once after a user first sets their nickname — baselines existing comments so nothing old shows as unread
@@ -138,13 +138,12 @@ function renderInlineComments(eventId) {
 
   const comments = commentsCache[eventId] || [];
   const topLevel = comments.filter(c => !c.parent_id);
-  const replies  = comments.filter(c =>  c.parent_id);
 
   // ── Comment list ──
   if (topLevel.length === 0) {
     listEl.innerHTML = `<p class="no-comments-inline">No comments yet — be the first! 👇</p>`;
   } else {
-    listEl.innerHTML = topLevel.map(c => renderInlineComment(c, replies, eventId)).join('');
+    listEl.innerHTML = topLevel.map(c => renderInlineComment(c, comments, eventId)).join('');
   }
 
   // ── Add-comment form ──
@@ -175,16 +174,20 @@ function renderInlineComments(eventId) {
   }
 }
 
-function renderInlineComment(comment, allReplies, eventId) {
+function renderInlineComment(comment, allComments, eventId) {
   const date    = new Date(comment.created_at);
   const timeStr = formatCommentDate(date);
-  const myReplies = allReplies.filter(r => r.parent_id === comment.id);
+  const descendants = getDescendants(allComments, comment.id);
   const typeTag = comment.type === 'suggestion'
     ? `<span class="comment-type suggestion-tag">💡 Suggestion</span>`
     : '';
+  const canDelete = currentUser && currentUser.name === comment.user_name;
+  const deleteBtn = canDelete
+    ? `<button class="ic-delete-btn" onclick="deleteComment('${comment.id}', '${eventId}')" title="Delete comment">🗑</button>`
+    : '';
 
-  const repliesHtml = myReplies.length > 0
-    ? `<div class="reply-thread">${myReplies.map(r => renderReplyComment(r)).join('')}</div>`
+  const repliesHtml = descendants.length > 0
+    ? `<div class="reply-thread">${descendants.map(r => renderReplyComment(r, allComments, eventId)).join('')}</div>`
     : '';
 
   return `
@@ -194,6 +197,7 @@ function renderInlineComment(comment, allReplies, eventId) {
         <span class="ic-name">${escapeHtml(comment.user_name)}</span>
         ${typeTag}
         <span class="ic-time" title="${date.toLocaleString()}">${timeStr}</span>
+        ${deleteBtn}
       </div>
       <p class="ic-body">${escapeHtml(comment.content)}</p>
       ${repliesHtml}
@@ -204,16 +208,33 @@ function renderInlineComment(comment, allReplies, eventId) {
     </div>`;
 }
 
-function renderReplyComment(reply) {
+function renderReplyComment(reply, allComments, eventId) {
   const date = new Date(reply.created_at);
+  // Find who they replied to (for "@name" context)
+  const repliedTo = allComments ? allComments.find(c => String(c.id) === String(reply.parent_id)) : null;
+  const replyToHtml = repliedTo
+    ? `<span class="ic-reply-to">↩ ${escapeHtml(repliedTo.user_name)}</span>`
+    : '';
+  const canDelete = currentUser && currentUser.name === reply.user_name;
+  const deleteBtn = canDelete
+    ? `<button class="ic-delete-btn" onclick="deleteComment('${reply.id}', '${eventId}')" title="Delete">🗑</button>`
+    : '';
+  const replyBtn = eventId
+    ? `<button class="ic-reply-btn" onclick="showReplyForm('${reply.id}', '${eventId}', '${escapeHtml(reply.user_name).replace(/'/g,"\\'")}')">↩ Reply</button>`
+    : '';
+
   return `
-    <div class="reply-card">
+    <div class="reply-card" id="comment-${reply.id}">
       <div class="ic-header">
         <span class="ic-avatar small">${getInitials(reply.user_name)}</span>
         <span class="ic-name">${escapeHtml(reply.user_name)}</span>
+        ${replyToHtml}
         <span class="ic-time">${formatCommentDate(date)}</span>
+        ${deleteBtn}
       </div>
       <p class="ic-body">${escapeHtml(reply.content)}</p>
+      ${replyBtn}
+      <div class="reply-form-slot" id="reply-slot-${reply.id}"></div>
     </div>`;
 }
 
@@ -521,6 +542,73 @@ async function saveEventOverride(eventId, updates) {
 }
 
 // ─── Utilities ─────────────────────────────────────────────
+
+// Returns all descendants of a comment (replies, replies to replies, etc.)
+// sorted oldest-first for display
+function getDescendants(allComments, rootId) {
+  const result = [];
+  function collect(parentId) {
+    allComments.forEach(c => {
+      if (String(c.parent_id) === String(parentId)) {
+        result.push(c);
+        collect(c.id);
+      }
+    });
+  }
+  collect(rootId);
+  result.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  return result;
+}
+
+// ─── Delete a comment (and its descendants) ────────────────
+function deleteComment(commentId, eventId) {
+  if (!currentUser) return;
+  const list = commentsCache[eventId] || [];
+  const comment = list.find(c => String(c.id) === String(commentId));
+  if (!comment) return;
+  if (comment.user_name !== currentUser.name) {
+    showToast('You can only delete your own comments.');
+    return;
+  }
+
+  // Collect IDs to delete: comment + all descendants
+  const toDelete = new Set();
+  function collectDescendants(id) {
+    toDelete.add(String(id));
+    list.forEach(c => { if (String(c.parent_id) === String(id)) collectDescendants(c.id); });
+  }
+  collectDescendants(commentId);
+
+  commentsCache[eventId] = list.filter(c => !toDelete.has(String(c.id)));
+
+  // Update localStorage for affected day
+  const day = ITINERARY.find(d => d.events.some(e => e.id === eventId));
+  if (day) {
+    const stored = {};
+    day.events.forEach(ev => {
+      if (commentsCache[ev.id] && commentsCache[ev.id].length > 0) {
+        stored[ev.id] = commentsCache[ev.id];
+      }
+    });
+    try { localStorage.setItem('kims_comments_' + day.id, JSON.stringify(stored)); } catch (_) {}
+  }
+
+  renderInlineComments(eventId);
+  refreshCommentCounts();
+  _refreshHistoryIfOpen();
+
+  // Delete from Supabase (skip local-only IDs)
+  if (USE_SUPABASE) {
+    toDelete.forEach(id => {
+      if (!String(id).startsWith('local-')) {
+        supabase.from('comments').delete().eq('id', id)
+          .then(({ error }) => { if (error) console.warn('Delete failed:', error); })
+          .catch(err => console.warn('Delete error:', err));
+      }
+    });
+  }
+}
+
 function formatCommentDate(date) {
   const now     = Date.now();
   const seconds = Math.floor((now - date.getTime()) / 1000);
@@ -589,34 +677,37 @@ function _renderCommentHistoryList() {
   const listEl = document.getElementById('commentHistoryList');
   if (!listEl) return;
 
-  const allComments = [];
+  const allEntries = [];
   ITINERARY.forEach(day => {
     day.events.forEach(event => {
-      const topLevel = (commentsCache[event.id] || []).filter(c => !c.parent_id);
+      const eventComments = commentsCache[event.id] || [];
+      const topLevel = eventComments.filter(c => !c.parent_id);
       topLevel.forEach(c => {
-        const replies = (commentsCache[event.id] || []).filter(r => r.parent_id === c.id);
-        allComments.push({
-          comment:   c,
-          replies,
-          dayTitle:  day.title,
-          dayEmoji:  day.emoji,
-          dayId:     day.id,
-          eventName: event.title,
+        const descendants = getDescendants(eventComments, c.id);
+        allEntries.push({
+          comment:      c,
+          descendants,
+          allComments:  eventComments,
+          eventId:      event.id,
+          dayTitle:     day.title,
+          dayEmoji:     day.emoji,
+          dayId:        day.id,
+          eventName:    event.title,
         });
       });
     });
   });
 
-  allComments.sort((a, b) => new Date(b.comment.created_at) - new Date(a.comment.created_at));
+  allEntries.sort((a, b) => new Date(b.comment.created_at) - new Date(a.comment.created_at));
 
-  if (allComments.length === 0) {
+  if (allEntries.length === 0) {
     listEl.innerHTML = '<p class="no-comments">No comments yet — be the first to leave one on a stop!</p>';
     return;
   }
 
   const seen = getSeenIds();
 
-  listEl.innerHTML = allComments.map(({ comment, replies, dayTitle, dayEmoji, dayId, eventName }) => {
+  listEl.innerHTML = allEntries.map(({ comment, descendants, allComments, eventId, dayTitle, dayEmoji, dayId, eventName }) => {
     const date    = new Date(comment.created_at);
     const timeStr = formatCommentDate(date);
     const typeTag = comment.type === 'suggestion'
@@ -624,15 +715,29 @@ function _renderCommentHistoryList() {
     const isUnread = currentUser
       && comment.user_name !== currentUser.name
       && !seen.has(String(comment.id));
+    const canDeleteTop = currentUser && currentUser.name === comment.user_name;
+    const deleteTopBtn = canDeleteTop
+      ? `<button class="ic-delete-btn" onclick="deleteComment('${comment.id}', '${eventId}'); openCommentHistoryModal();" title="Delete comment">🗑</button>`
+      : '';
 
-    const repliesHtml = replies.length > 0
-      ? `<div class="ch-replies">${replies.map(r => {
+    const repliesHtml = descendants.length > 0
+      ? `<div class="ch-replies">${descendants.map(r => {
           const rUnread = currentUser && r.user_name !== currentUser.name && !seen.has(String(r.id));
+          const repliedTo = allComments.find(c => String(c.id) === String(r.parent_id));
+          const replyToHtml = repliedTo ? `<span class="ic-reply-to">↩ ${escapeHtml(repliedTo.user_name)}</span>` : '';
+          const canDeleteReply = currentUser && currentUser.name === r.user_name;
+          const deleteReplyBtn = canDeleteReply
+            ? `<button class="ic-delete-btn" onclick="deleteComment('${r.id}', '${eventId}'); openCommentHistoryModal();" title="Delete">🗑</button>`
+            : '';
           return `<div class="ch-reply${rUnread ? ' ch-unread-item' : ''}">
             <span class="ic-avatar small">${getInitials(r.user_name)}</span>
-            <div>
-              <span class="ic-name">${escapeHtml(r.user_name)}</span>
-              <span class="ic-time">${formatCommentDate(new Date(r.created_at))}</span>
+            <div style="flex:1">
+              <div class="ic-header">
+                <span class="ic-name">${escapeHtml(r.user_name)}</span>
+                ${replyToHtml}
+                <span class="ic-time">${formatCommentDate(new Date(r.created_at))}</span>
+                ${deleteReplyBtn}
+              </div>
               <p class="ic-body">${escapeHtml(r.content)}</p>
             </div>
           </div>`;
@@ -652,6 +757,7 @@ function _renderCommentHistoryList() {
               <span class="ic-name">${escapeHtml(comment.user_name)}</span>
               ${typeTag}
               <span class="ic-time">${timeStr}</span>
+              ${deleteTopBtn}
             </div>
             <p class="ic-body">${escapeHtml(comment.content)}</p>
           </div>
@@ -660,3 +766,4 @@ function _renderCommentHistoryList() {
       </div>`;
   }).join('');
 }
+
