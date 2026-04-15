@@ -390,7 +390,8 @@ function onTitleInput(eventId, value) {
 
   _titleDebounce[eventId] = setTimeout(async () => {
     try {
-      const url  = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(value)}&limit=6&viewbox=-122.55,47.25,-121.85,47.85&bounded=0&addressdetails=1`;
+      // extratags=1 gives us wikipedia links when available
+      const url  = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(value)}&limit=6&viewbox=-122.55,47.25,-121.85,47.85&bounded=0&addressdetails=1&extratags=1`;
       const data = await fetch(url, { headers: { 'Accept-Language': 'en' } }).then(r => r.json());
       if (!el) return;
       if (!data?.length) { el.innerHTML = ''; return; }
@@ -407,23 +408,80 @@ function onTitleInput(eventId, value) {
   }, 380);
 }
 
-function selectPlace(eventId, idx) {
+async function selectPlace(eventId, idx) {
   const item = (_placeResults[eventId] || [])[idx];
   if (!item) return;
+
   const titleEl = document.getElementById('edit-title-'        + eventId);
   const addrEl  = document.getElementById('edit-address-'      + eventId);
   const suggEl  = document.getElementById('title-suggestions-' + eventId);
-  const name    = item.display_name.split(',')[0].trim();
-  const a       = item.address || {};
-  const addr    = [a.house_number, a.road, a.city || a.town || a.village || a.suburb].filter(Boolean).join(' ')
-                  || item.display_name.split(',').slice(0, 3).join(',').trim();
+
+  const name = item.display_name.split(',')[0].trim();
+  const a    = item.address || {};
+  const addr = [a.house_number, a.road, a.city || a.town || a.village || a.suburb]
+    .filter(Boolean).join(' ') || item.display_name.split(',').slice(0, 3).join(',').trim();
+
   if (titleEl) titleEl.value = name;
   if (addrEl)  addrEl.value  = addr;
   if (suggEl)  suggEl.innerHTML = '';
+
   eventOverrides[eventId] = eventOverrides[eventId] || {};
   eventOverrides[eventId]._pendingCoords = { lat: parseFloat(item.lat), lng: parseFloat(item.lon) };
   showEditMap(eventId, parseFloat(item.lat), parseFloat(item.lon), name);
-  showToast(`Found: ${name}`);
+
+  showToast(`Looking up photo & details for ${name}…`);
+  const details = await fetchPlaceWikiDetails(item, name);
+
+  if (details?.image) {
+    const imgEl = document.getElementById('edit-image-' + eventId);
+    if (imgEl) imgEl.value = details.image;
+  }
+  if (details?.description) {
+    const descEl = document.getElementById('edit-desc-' + eventId);
+    if (descEl) descEl.value = details.description;
+  }
+
+  if (details?.image || details?.description) {
+    showToast(`✓ ${name} — photo & description filled in`);
+  } else {
+    showToast(`Found ${name} — no Wikipedia entry, fill photo manually`);
+  }
+}
+
+async function fetchPlaceWikiDetails(nominatimItem, name) {
+  // Use wikipedia tag from Nominatim if available, otherwise search
+  let articleTitle = null;
+  const wikiTag = nominatimItem.extratags?.wikipedia;
+  if (wikiTag) {
+    articleTitle = wikiTag.replace(/^en:/i, '');
+  } else {
+    try {
+      const searchUrl = `https://en.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(name + ' Seattle')}&limit=1&format=json&origin=*`;
+      const [, titles] = await fetch(searchUrl).then(r => r.json());
+      articleTitle = titles?.[0] || null;
+    } catch (_) {}
+  }
+
+  if (!articleTitle) return null;
+
+  try {
+    const data = await fetch(
+      `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(articleTitle)}`,
+      { headers: { 'Accept': 'application/json' } }
+    ).then(r => r.json());
+
+    // Use a larger thumbnail if available
+    const image = data.originalimage?.source || data.thumbnail?.source || null;
+
+    // First 1-2 sentences as description
+    const description = data.extract
+      ? data.extract.split('. ').slice(0, 2).join('. ').trim().replace(/\s+/g, ' ') + '.'
+      : null;
+
+    return { image, description };
+  } catch (_) {
+    return null;
+  }
 }
 
 // ─── Address field autocomplete ────────────────────────────
