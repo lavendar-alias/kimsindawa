@@ -1257,25 +1257,141 @@ async function forceRefreshFromServer() {
   if (dot) { dot.dataset.status = 'pending'; dot.title = 'Refreshing…'; }
   showToast('Refreshing from server…');
 
-  // Clear in-memory caches
   Object.keys(eventOverrides).forEach(k => delete eventOverrides[k]);
   Object.keys(commentsCache).forEach(k => delete commentsCache[k]);
 
-  try {
-    await loadEventOverrides();
-  } catch (e) {
-    console.warn('Force refresh failed:', e);
-  }
+  try { await loadEventOverrides(); } catch (e) { console.warn('Force refresh failed:', e); }
 
   extractDayOrders();
   renderAllDays();
   updateAuthUI();
   refreshCommentCounts();
   refreshUnreadBadge();
-
-  // Reload comments for all visible days
   ITINERARY.forEach(day => loadCommentsForDay(day.id));
   showToast('Refreshed from server ✓');
+}
+
+// ─── Push ALL local overrides to Supabase at once ──────────
+async function pushAllToSupabase() {
+  if (!USE_SUPABASE) { showToast('Supabase not configured.'); return; }
+
+  const entries = Object.entries(eventOverrides);
+  if (entries.length === 0) { showToast('Nothing in local storage to push.'); return; }
+
+  const btn = document.getElementById('pushAllBtn');
+  if (btn) btn.disabled = true;
+  showToast('Pushing ' + entries.length + ' entries to server…');
+
+  let ok = 0, fail = 0, lastErr = null;
+  for (const [eventId, data] of entries) {
+    const supabaseData = { ...data };
+    if (supabaseData.image && supabaseData.image.startsWith('data:')) delete supabaseData.image;
+    const { error } = await supabase.from('event_overrides').upsert({
+      event_id:        eventId,
+      data:            supabaseData,
+      updated_at:      new Date().toISOString(),
+      updated_by_name: currentUser?.name || 'local-export',
+    }, { onConflict: 'event_id' });
+    if (error) { fail++; lastErr = error; console.error('Push failed for', eventId, error); }
+    else ok++;
+  }
+
+  if (btn) btn.disabled = false;
+  if (fail === 0) {
+    _setSyncStatus('ok');
+    showToast('✅ Pushed ' + ok + ' entries — all devices will now see your changes!');
+  } else {
+    _setSyncStatus('error', lastErr?.message || 'partial failure');
+    showToast('⚠️ ' + ok + ' pushed, ' + fail + ' failed. Error: ' + (lastErr?.message || lastErr?.code || 'unknown'));
+    openDataExportModal(); // show export so user can share data with developer
+  }
+}
+
+// ─── Export local data as JSON (for developer to hardcode) ─
+function openDataExportModal() {
+  let modal = document.getElementById('dataExportModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'dataExportModal';
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+      <div class="modal modal-large">
+        <div class="modal-header">
+          <h2>📋 Export My Changes</h2>
+          <button class="modal-close" onclick="closeModal('dataExportModal')">×</button>
+        </div>
+        <div class="modal-body">
+          <p style="margin-bottom:12px;color:var(--mid);font-size:0.9rem;">Copy this and send it to the developer — they can hardcode your changes into the site so everyone sees them without needing Supabase.</p>
+          <textarea id="dataExportText" style="width:100%;height:300px;font-family:monospace;font-size:0.75rem;border:1px solid var(--fog);border-radius:8px;padding:12px;resize:vertical;" readonly></textarea>
+          <button class="btn-save" style="margin-top:12px;width:100%;" onclick="copyExportData()">Copy to clipboard</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('open'); });
+  }
+
+  // Populate with current data
+  const exportData = {
+    eventOverrides: Object.fromEntries(
+      Object.entries(eventOverrides).filter(([, v]) => {
+        // Strip data: URLs from export (they're device-local anyway)
+        const d = { ...v };
+        if (d.image && d.image.startsWith('data:')) delete d.image;
+        return true;
+      }).map(([k, v]) => {
+        const d = { ...v };
+        if (d.image && d.image.startsWith('data:')) delete d.image;
+        return [k, d];
+      })
+    ),
+    exportedAt: new Date().toISOString(),
+    exportedBy: currentUser?.name || 'unknown',
+  };
+  document.getElementById('dataExportText').value = JSON.stringify(exportData, null, 2);
+  modal.classList.add('open');
+}
+
+function copyExportData() {
+  const ta = document.getElementById('dataExportText');
+  if (!ta) return;
+  ta.select();
+  navigator.clipboard?.writeText(ta.value).then(() => showToast('Copied!')).catch(() => {
+    document.execCommand('copy');
+    showToast('Copied!');
+  });
+}
+
+// ─── Admin sync bar (shown when logged in) ─────────────────
+function renderAdminBar() {
+  let bar = document.getElementById('adminSyncBar');
+  if (!currentUser) {
+    if (bar) bar.remove();
+    return;
+  }
+  if (bar) return; // already rendered
+
+  bar = document.createElement('div');
+  bar.id = 'adminSyncBar';
+  bar.className = 'admin-sync-bar';
+  bar.innerHTML = `
+    <span class="admin-bar-label">Your changes:</span>
+    <button class="admin-bar-btn primary" id="pushAllBtn" onclick="pushAllToSupabase()">
+      ☁️ Push all to all devices
+    </button>
+    <button class="admin-bar-btn" onclick="openDataExportModal()">
+      📋 Export data
+    </button>
+    <button class="admin-bar-btn" onclick="forceRefreshFromServer()">
+      🔄 Refresh from server
+    </button>
+  `;
+  // Insert right after navbar
+  const nav = document.getElementById('navbar');
+  if (nav && nav.nextSibling) {
+    nav.parentNode.insertBefore(bar, nav.nextSibling);
+  } else {
+    document.body.prepend(bar);
+  }
 }
 
 // ─── Edit panel: open address in Google Maps live ──────────
