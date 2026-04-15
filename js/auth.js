@@ -70,7 +70,12 @@ function updateAuthUI() {
     if (authBtn)  { authBtn.textContent = 'Join the Trip'; authBtn.onclick = openAuthModal; }
     if (userInfo) { userInfo.style.display = 'none'; }
     document.querySelectorAll('.edit-btn').forEach(btn => btn.style.display = 'none');
+    // Remove admin bar when signed out
+    document.getElementById('adminSyncBar')?.remove();
   }
+
+  // Show/hide admin sync bar (defined in app.js)
+  if (typeof renderAdminBar === 'function') renderAdminBar();
 }
 
 // ─── Open modal ────────────────────────────────────────────
