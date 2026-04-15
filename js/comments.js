@@ -801,4 +801,3 @@ function _renderCommentHistoryList() {
       </div>`;
   }).join('');
 }
-
