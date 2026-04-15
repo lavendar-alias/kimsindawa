@@ -10,19 +10,17 @@ window.addEventListener('DOMContentLoaded', async () => {
   refreshApp();
 });
 
-// Called on boot and whenever auth state changes
 async function refreshApp() {
   const container = document.getElementById('daysContainer');
   if (!container) return;
 
   try { await loadEventOverrides(); } catch (e) { console.warn('Overrides unavailable:', e); }
   renderAllDays();
-  updateAuthUI(); // call AFTER render so auth-dependent controls exist in the DOM
+  updateAuthUI();
   renderReservationBanner();
   setupScrollSpy();
   autoScrollToToday();
 
-  // Lazy-load comments for visible days
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(e => {
       if (e.isIntersecting) {
@@ -51,7 +49,6 @@ function renderAuthGate() {
       </div>
     </div>`;
 
-  // Focus the input and allow Enter key
   setTimeout(() => {
     const input = document.getElementById('gateNicknameInput');
     input?.focus();
@@ -83,13 +80,10 @@ function renderAllDays() {
   const container = document.getElementById('daysContainer');
   container.innerHTML = ITINERARY.map(day => renderDay(day)).join('');
 
-  // Initialize maps after DOM is ready
   requestAnimationFrame(() => {
     ITINERARY.forEach(day => {
       day.events.forEach(event => {
-        if (event.coords) {
-          initMiniMap(event.id, event.coords.lat, event.coords.lng, event.title);
-        }
+        if (event.coords) initMiniMap(event.id, event.coords.lat, event.coords.lng, event.title);
       });
       initDayOverviewMap(day);
     });
@@ -117,7 +111,6 @@ function renderDay(day) {
         <div class="day-overview-map" id="map-overview-${day.id}"></div>
       </div>
 
-      <!-- Sticky day indicator — sticks as you scroll through events -->
       <div class="day-sticky-indicator" style="--day-accent:${day.accentColor};" data-day-id="${day.id}">
         <span class="dsi-emoji">${day.emoji}</span>
         <span class="dsi-label">Day ${day.dayNumber} · ${day.title}</span>
@@ -131,13 +124,12 @@ function renderDay(day) {
 }
 
 function renderEvent(event, day, idx) {
-  // Apply any saved overrides
   const override = eventOverrides[event.id] || {};
   const e = { ...event, ...override };
 
-  const catInfo    = CATEGORY_ICONS[e.category] || { icon: '📍', label: '' };
-  const hasMap     = !!e.coords;
-  const isLast     = idx === day.events.length - 1;
+  const catInfo  = CATEGORY_ICONS[e.category] || { icon: '📍', label: '' };
+  const hasMap   = !!e.coords;
+  const isLast   = idx === day.events.length - 1;
 
   const commuteHtml = renderCommute(e, day);
   const reservationHtml = e.reservation
@@ -152,25 +144,17 @@ function renderEvent(event, day, idx) {
          ${e.splitGroup === 'sylvia-jennifer' ? '🎌 Sylvia & Jennifer' : '🌿 Kim · Mom · Kyle'}
        </div>` : '';
 
-  const costHtml = e.cost
-    ? `<span class="event-pill cost-pill">💰 ${escapeHtml(e.cost)}</span>` : '';
-  const durationHtml = e.duration
-    ? `<span class="event-pill dur-pill">⏱ ${escapeHtml(e.duration)}</span>` : '';
+  const costHtml     = e.cost     ? `<span class="event-pill cost-pill">💰 ${escapeHtml(e.cost)}</span>`     : '';
+  const durationHtml = e.duration ? `<span class="event-pill dur-pill">⏱ ${escapeHtml(e.duration)}</span>` : '';
+  const altNoteHtml  = e.altNote  ? `<div class="event-alt-note">ℹ️ ${escapeHtml(e.altNote)}</div>`         : '';
 
-  const altNoteHtml = e.altNote
-    ? `<div class="event-alt-note">ℹ️ ${escapeHtml(e.altNote)}</div>` : '';
-
-  // Photo banner
   const imageSrc = getEventImage(e);
   const photoHtml = imageSrc
     ? `<div class="event-photo-wrap">
          <img class="event-photo" src="${imageSrc}" alt="${escapeHtml(e.title)}" loading="lazy" onerror="handleEventImageError(this, '${e.coords ? '1' : '0'}', '${e.coords?.lat ?? ''}', '${e.coords?.lng ?? ''}', '${escapeHtml(e.title).replace(/'/g,"\\'")}')">
        </div>` : '';
 
-  // Google search link for the stop title
-  const searchQuery = e.address
-    ? encodeURIComponent(e.title + ' ' + e.address)
-    : encodeURIComponent(e.title + ' Seattle');
+  const searchQuery  = e.address ? encodeURIComponent(e.title + ' ' + e.address) : encodeURIComponent(e.title + ' Seattle');
   const googleSearchUrl = `https://www.google.com/search?q=${searchQuery}`;
 
   return `
@@ -184,7 +168,6 @@ function renderEvent(event, day, idx) {
       </div>
 
       <div class="event-col">
-        <!-- Event card — no overflow:hidden so nothing gets clipped -->
         <div class="event-card" data-event-id="${e.id}">
           ${photoHtml}
           ${splitGroupHtml}
@@ -194,30 +177,16 @@ function renderEvent(event, day, idx) {
                 <a class="event-title-link" href="${googleSearchUrl}" target="_blank" rel="noopener">${escapeHtml(e.title)}</a>
               </h3>
               <div class="event-actions">
-                <button class="action-btn history-btn edit-btn" onclick="openHistoryModal('${e.id}', '${escapeHtml(e.title).replace(/'/g,"\\'")}', '${day.id}')" title="Edit History" style="display:none;">
-                  🕐
-                </button>
-                <button class="action-btn edit-btn" onclick="toggleEditMode('${e.id}', '${day.id}')" title="Edit this stop" style="display:none;">
-                  ✏️
-                </button>
+                <button class="action-btn history-btn edit-btn" onclick="openHistoryModal('${e.id}', '${escapeHtml(e.title).replace(/'/g,"\\'")}', '${day.id}')" title="Edit History" style="display:none;">🕐</button>
+                <button class="action-btn edit-btn" onclick="toggleEditMode('${e.id}', '${day.id}')" title="Edit this stop" style="display:none;">✏️</button>
               </div>
             </div>
-
-            ${e.address ? `
-            <a class="event-address" href="${makeGoogleMapsLink(e.coords)}" target="_blank">
-              📍 ${escapeHtml(e.address)}
-            </a>` : ''}
+            ${e.address ? `<a class="event-address" href="${makeGoogleMapsLink(e.coords)}" target="_blank">📍 ${escapeHtml(e.address)}</a>` : ''}
           </div>
 
           <p class="event-description" id="desc-${e.id}" data-field="description" data-event="${e.id}" data-day="${day.id}">${escapeHtml(e.description)}</p>
-
           ${altNoteHtml}
-
-          <div class="event-pills">
-            ${durationHtml}
-            ${costHtml}
-          </div>
-
+          <div class="event-pills">${durationHtml}${costHtml}</div>
           ${reservationHtml}
           ${commuteHtml}
 
@@ -227,7 +196,7 @@ function renderEvent(event, day, idx) {
           </div>` : ''}
         </div>
 
-        <!-- Comments panel — sits below the card, outside overflow:hidden -->
+        <!-- Comments panel — outside card so overflow:hidden never clips it -->
         <div class="inline-comments" id="inline-comments-${e.id}">
           <button class="comment-toggle-btn" onclick="toggleComments('${e.id}', '${day.id}', '${escapeHtml(e.title).replace(/'/g,"\\'")}')">
             <span class="comment-toggle-icon">💬</span>
@@ -243,7 +212,7 @@ function renderEvent(event, day, idx) {
       </div>
     </div>
 
-    <!-- Edit Panel (hidden by default) -->
+    <!-- Edit Panel -->
     <div class="edit-panel" id="edit-panel-${e.id}" style="display:none;" data-day="${day.id}">
       <div class="edit-panel-inner">
         <h4>Edit this stop</h4>
@@ -259,8 +228,7 @@ function renderEvent(event, day, idx) {
           <label>Address</label>
           <div class="address-autocomplete-wrap">
             <input type="text" id="edit-address-${e.id}" value="${escapeHtml(e.address || '')}"
-                   placeholder="Type address or place name…"
-                   autocomplete="off"
+                   placeholder="Type address or place name…" autocomplete="off"
                    oninput="onAddressInput('${e.id}', this.value)">
             <div class="address-suggestions" id="addr-suggestions-${e.id}"></div>
           </div>
@@ -290,8 +258,7 @@ function renderEvent(event, day, idx) {
             </label>
           </div>
           <input class="photo-url-input" type="url" id="edit-image-${e.id}"
-                 value="${escapeHtml(e.image || '')}"
-                 placeholder="…or paste a photo URL">
+                 value="${escapeHtml(e.image || '')}" placeholder="…or paste a photo URL">
           <small class="form-help">URL or file — Save Changes to apply.</small>
         </div>
         ${commuteHtml ? `<div class="edit-commute-preview">${commuteHtml}</div>` : ''}
@@ -308,16 +275,9 @@ function renderCommute(event, day) {
   if (!event.commute) return '';
   const { mode, minutes, note } = event.commute;
   const modeInfo = TRAVEL_MODE_ICONS[mode] || TRAVEL_MODE_ICONS.drive;
-
-  // Build Google Maps link between previous event and this one
   let mapsHref = '#';
-  if (event.coords) {
-    mapsHref = makeDirectionLink(event.commute, event, day);
-  }
-
-  // Real-time traffic hint
+  if (event.coords) mapsHref = makeDirectionLink(event.commute, event, day);
   const rtLabel = isOnTripDate(day.date) ? '🔴 Live Traffic' : 'View Route';
-
   return `
     <div class="commute-bar">
       <span class="commute-icon">${modeInfo.icon}</span>
@@ -328,8 +288,7 @@ function renderCommute(event, day) {
 }
 
 function isOnTripDate(dateStr) {
-  const today = new Date().toISOString().slice(0, 10);
-  return today === dateStr;
+  return new Date().toISOString().slice(0, 10) === dateStr;
 }
 
 function makeGoogleMapsLink(coords) {
@@ -339,46 +298,32 @@ function makeGoogleMapsLink(coords) {
 
 function makeDirectionLink(commute, event, day) {
   if (!event.coords) return '#';
-  const mode = commute.mode === 'transit' ? 'transit'
-             : commute.mode === 'walk'    ? 'walking'
-             : 'driving';
-
-  // Find previous event with coords
-  const events  = day.events;
-  const myIdx   = events.findIndex(e => e.id === event.id);
+  const mode = commute.mode === 'transit' ? 'transit' : commute.mode === 'walk' ? 'walking' : 'driving';
+  const events = day.events;
+  const myIdx  = events.findIndex(e => e.id === event.id);
   const prevEvt = events.slice(0, myIdx).reverse().find(e => e.coords);
-
-  if (!prevEvt) {
-    return `https://www.google.com/maps/dir/?api=1&destination=${event.coords.lat},${event.coords.lng}&travelmode=${mode}`;
-  }
+  if (!prevEvt) return `https://www.google.com/maps/dir/?api=1&destination=${event.coords.lat},${event.coords.lng}&travelmode=${mode}`;
   return `https://www.google.com/maps/dir/?api=1&origin=${prevEvt.coords.lat},${prevEvt.coords.lng}&destination=${event.coords.lat},${event.coords.lng}&travelmode=${mode}`;
 }
 
 // ─── Edit mode ─────────────────────────────────────────────
 function toggleEditMode(eventId, dayId) {
   if (!currentUser) { openAuthModal(); return; }
-
   const panel = document.getElementById('edit-panel-' + eventId);
   const card  = document.querySelector(`[data-event-id="${eventId}"]`);
   if (!panel) return;
-
   const isOpen = panel.style.display !== 'none';
   panel.style.display = isOpen ? 'none' : 'block';
   if (card) card.classList.toggle('editing', !isOpen);
-
-  // Show map if address exists
   if (!isOpen) {
     const day   = ITINERARY.find(d => d.id === dayId);
     const event = day?.events.find(e => e.id === eventId);
-    if (event?.coords) {
-      setTimeout(() => showEditMap(eventId, event.coords.lat, event.coords.lng, event.title), 100);
-    }
+    if (event?.coords) setTimeout(() => showEditMap(eventId, event.coords.lat, event.coords.lng, event.title), 100);
   }
 }
 
 async function saveEdit(eventId, dayId) {
   if (!currentUser) return;
-
   const newTitle   = document.getElementById('edit-title-'   + eventId)?.value.trim();
   const newDesc    = document.getElementById('edit-desc-'    + eventId)?.value.trim();
   const newTime    = document.getElementById('edit-time-'    + eventId)?.value.trim();
@@ -392,46 +337,21 @@ async function saveEdit(eventId, dayId) {
 
   const override = eventOverrides[eventId] || {};
   const cur = { ...event, ...override };
-
   const updates = {};
   const historyPromises = [];
 
-  if (newTitle && newTitle !== cur.title) {
-    updates.title = newTitle;
-    historyPromises.push(saveEditHistory(eventId, dayId, 'title', cur.title, newTitle));
-  }
-  if (newDesc && newDesc !== cur.description) {
-    updates.description = newDesc;
-    historyPromises.push(saveEditHistory(eventId, dayId, 'description', cur.description, newDesc));
-  }
-  if (newTime !== undefined && newTime !== (cur.time || '')) {
-    updates.time = newTime;
-    historyPromises.push(saveEditHistory(eventId, dayId, 'time', cur.time, newTime));
-  }
-  if (newCost !== undefined && newCost !== (cur.cost || '')) {
-    updates.cost = newCost;
-    historyPromises.push(saveEditHistory(eventId, dayId, 'cost', cur.cost, newCost));
-  }
-  if (newAddress !== undefined && newAddress !== (cur.address || '')) {
-    updates.address = newAddress;
-    historyPromises.push(saveEditHistory(eventId, dayId, 'address', cur.address, newAddress));
-  }
-  if (newImage !== undefined && newImage !== (cur.image || '')) {
-    updates.image = newImage || null;
-    historyPromises.push(saveEditHistory(eventId, dayId, 'image', cur.image, newImage || '(removed)'));
-  }
-  if (eventOverrides[eventId]?._pendingCoords) {
-    updates.coords = eventOverrides[eventId]._pendingCoords;
-  }
+  if (newTitle   && newTitle   !== cur.title)                { updates.title       = newTitle;   historyPromises.push(saveEditHistory(eventId, dayId, 'title',       cur.title,       newTitle)); }
+  if (newDesc    && newDesc    !== cur.description)          { updates.description = newDesc;    historyPromises.push(saveEditHistory(eventId, dayId, 'description', cur.description, newDesc)); }
+  if (newTime    !== undefined && newTime    !== (cur.time    || '')) { updates.time    = newTime;    historyPromises.push(saveEditHistory(eventId, dayId, 'time',    cur.time,    newTime)); }
+  if (newCost    !== undefined && newCost    !== (cur.cost    || '')) { updates.cost    = newCost;    historyPromises.push(saveEditHistory(eventId, dayId, 'cost',    cur.cost,    newCost)); }
+  if (newAddress !== undefined && newAddress !== (cur.address || '')) { updates.address = newAddress; historyPromises.push(saveEditHistory(eventId, dayId, 'address', cur.address, newAddress)); }
+  if (newImage   !== undefined && newImage   !== (cur.image  || '')) { updates.image   = newImage || null; historyPromises.push(saveEditHistory(eventId, dayId, 'image', cur.image, newImage || '(removed)')); }
+  if (eventOverrides[eventId]?._pendingCoords) updates.coords = eventOverrides[eventId]._pendingCoords;
 
-  if (Object.keys(updates).length === 0) {
-    toggleEditMode(eventId, dayId);
-    return;
-  }
+  if (Object.keys(updates).length === 0) { toggleEditMode(eventId, dayId); return; }
 
   await Promise.all([saveEventOverride(eventId, updates), ...historyPromises]);
 
-  // Re-render this event
   const container = document.getElementById('event-' + eventId);
   const editPanel = document.getElementById('edit-panel-' + eventId);
   if (container) {
@@ -439,15 +359,10 @@ async function saveEdit(eventId, dayId) {
     const evtIdx = ITINERARY[dayIdx].events.findIndex(e => e.id === eventId);
     const wrapper = document.createElement('div');
     wrapper.innerHTML = renderEvent(ITINERARY[dayIdx].events[evtIdx], ITINERARY[dayIdx], evtIdx);
-    const newNodes = Array.from(wrapper.children);
-    container.replaceWith(...newNodes);
+    container.replaceWith(...Array.from(wrapper.children));
     if (editPanel) editPanel.remove();
-
-    // Re-init map if exists
     const evt = { ...ITINERARY[dayIdx].events[evtIdx], ...(eventOverrides[eventId] || {}) };
-    if (evt.coords) {
-      requestAnimationFrame(() => initMiniMap(evt.id, evt.coords.lat, evt.coords.lng, evt.title));
-    }
+    if (evt.coords) requestAnimationFrame(() => initMiniMap(evt.id, evt.coords.lat, evt.coords.lng, evt.title));
   }
 
   updateAuthUI();
@@ -455,35 +370,22 @@ async function saveEdit(eventId, dayId) {
   showToast(`Saved! Changes to "${newTitle || cur.title}" recorded.`);
 }
 
-// ─── Address autofill in edit panel ───────────────────────
+// ─── Address autofill ──────────────────────────────────────
 const _addrDebounce = {};
 function onAddressInput(eventId, value) {
   clearTimeout(_addrDebounce[eventId]);
   const suggestionsEl = document.getElementById('addr-suggestions-' + eventId);
-  if (!value || value.length < 3) {
-    if (suggestionsEl) suggestionsEl.innerHTML = '';
-    return;
-  }
-
+  if (!value || value.length < 3) { if (suggestionsEl) suggestionsEl.innerHTML = ''; return; }
   _addrDebounce[eventId] = setTimeout(async () => {
     try {
-      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(value)}&limit=5&countrycodes=us`;
-      const res  = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+      const res  = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(value)}&limit=5&countrycodes=us`, { headers: { 'Accept-Language': 'en' } });
       const data = await res.json();
-
       if (!suggestionsEl) return;
-      if (!data || data.length === 0) {
-        suggestionsEl.innerHTML = '';
-        return;
-      }
-
-      suggestionsEl.innerHTML = data.map(item => {
+      suggestionsEl.innerHTML = (data || []).map(item => {
         const label = item.display_name.split(',').slice(0, 3).join(',');
-        return `<div class="addr-suggestion" onclick="selectAddress('${eventId}', '${escapeHtml(label).replace(/'/g,"\\'")}', ${item.lat}, ${item.lon})">
-                  📍 ${escapeHtml(label)}
-                </div>`;
+        return `<div class="addr-suggestion" onclick="selectAddress('${eventId}', '${escapeHtml(label).replace(/'/g,"\\'")}', ${item.lat}, ${item.lon})">📍 ${escapeHtml(label)}</div>`;
       }).join('');
-    } catch (_) { /* network error — fail silently */ }
+    } catch (_) {}
   }, 450);
 }
 
@@ -492,14 +394,8 @@ function selectAddress(eventId, address, lat, lng) {
   const suggestionsEl = document.getElementById('addr-suggestions-' + eventId);
   if (input) input.value = address;
   if (suggestionsEl) suggestionsEl.innerHTML = '';
-
-  // Store the new coords so they can be saved
-  const event = findEventById(eventId);
-  if (event) {
-    eventOverrides[eventId] = eventOverrides[eventId] || {};
-    eventOverrides[eventId]._pendingCoords = { lat: parseFloat(lat), lng: parseFloat(lng) };
-  }
-
+  eventOverrides[eventId] = eventOverrides[eventId] || {};
+  eventOverrides[eventId]._pendingCoords = { lat: parseFloat(lat), lng: parseFloat(lng) };
   showEditMap(eventId, parseFloat(lat), parseFloat(lng), address);
 }
 
@@ -507,27 +403,11 @@ function showEditMap(eventId, lat, lng, title) {
   const container = document.getElementById('edit-map-' + eventId);
   if (!container) return;
   container.style.display = 'block';
-
-  if (mapInstances['edit-' + eventId]) {
-    mapInstances['edit-' + eventId].setView([lat, lng], 15);
-    return;
-  }
-
-  const map = L.map('edit-map-' + eventId, {
-    center: [lat, lng],
-    zoom: 15,
-    zoomControl: true,
-    scrollWheelZoom: false,
-  });
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap',
-    maxZoom: 19,
-  }).addTo(map);
-
+  if (mapInstances['edit-' + eventId]) { mapInstances['edit-' + eventId].setView([lat, lng], 15); return; }
+  const map = L.map('edit-map-' + eventId, { center: [lat, lng], zoom: 15, zoomControl: true, scrollWheelZoom: false });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap', maxZoom: 19 }).addTo(map);
   const day = ITINERARY.find(d => d.events.some(e => e.id === eventId));
-  const marker = L.marker([lat, lng], { icon: createMarker(day?.accentColor || '#2E6B8A') }).addTo(map);
-  marker.bindPopup(`<strong>${title}</strong>`, { closeButton: false });
-
+  L.marker([lat, lng], { icon: createMarker(day?.accentColor || '#2E6B8A') }).addTo(map).bindPopup(`<strong>${title}</strong>`, { closeButton: false });
   mapInstances['edit-' + eventId] = map;
   setTimeout(() => map.invalidateSize(), 100);
 }
@@ -535,11 +415,7 @@ function showEditMap(eventId, lat, lng, title) {
 function loadEventImageFile(eventId, files) {
   const file = files && files[0];
   if (!file) return;
-  if (!file.type.startsWith('image/')) {
-    showToast('Please choose an image file.');
-    return;
-  }
-
+  if (!file.type.startsWith('image/')) { showToast('Please choose an image file.'); return; }
   const reader = new FileReader();
   reader.onload = () => {
     const input = document.getElementById('edit-image-' + eventId);
@@ -555,11 +431,9 @@ function handlePhotoDrop(eventId, event) {
   event.preventDefault();
   const dropZone = document.getElementById('photo-drop-' + eventId);
   if (dropZone) dropZone.classList.remove('drag-over');
-
   const file = event.dataTransfer?.files?.[0];
   if (!file) return;
   if (!file.type.startsWith('image/')) { showToast('Please drop an image file.'); return; }
-
   const reader = new FileReader();
   reader.onload = () => {
     const input = document.getElementById('edit-image-' + eventId);
@@ -573,20 +447,15 @@ function handlePhotoDrop(eventId, event) {
 // ─── Map toggling ──────────────────────────────────────────
 function toggleMap(eventId) {
   const container = document.getElementById('map-' + eventId);
-  const btn       = container?.previousElementSibling;
+  const btn = container?.previousElementSibling;
   if (!container) return;
-
   const isHidden = container.style.display === 'none';
   container.style.display = isHidden ? 'block' : 'none';
   if (btn) btn.textContent = isHidden ? '🗺️ Hide Map' : '🗺️ Show on Map';
-
   if (isHidden) {
     if (!container.dataset.initialized) {
       const event = findEventById(eventId);
-      if (event?.coords) {
-        initMiniMap(eventId, event.coords.lat, event.coords.lng, event.title);
-        container.dataset.initialized = '1';
-      }
+      if (event?.coords) { initMiniMap(eventId, event.coords.lat, event.coords.lng, event.title); container.dataset.initialized = '1'; }
     } else {
       const map = mapInstances[eventId];
       if (map) setTimeout(() => map.invalidateSize(), 50);
@@ -599,21 +468,17 @@ function renderReservationBanner() {
   const el = document.getElementById('checklistItems');
   if (!el) return;
   el.innerHTML = RESERVATIONS.map(r =>
-    r.link
-      ? `<a href="${r.link}" target="_blank" class="res-chip">${r.name} (${r.day})</a>`
-      : `<span class="res-chip">${r.name} (${r.day})</span>`
+    r.link ? `<a href="${r.link}" target="_blank" class="res-chip">${r.name} (${r.day})</a>`
+           : `<span class="res-chip">${r.name} (${r.day})</span>`
   ).join('');
 }
 
-// ─── Auto-scroll to today's day during the trip ────────────
+// ─── Auto-scroll to today ──────────────────────────────────
 function autoScrollToToday() {
   const today = new Date().toISOString().slice(0, 10);
   const tripDay = ITINERARY.find(d => d.date === today);
   if (!tripDay) return;
-  setTimeout(() => {
-    const el = document.getElementById(tripDay.id);
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, 700);
+  setTimeout(() => { document.getElementById(tripDay.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 700);
 }
 
 // ─── Scroll helpers ────────────────────────────────────────
@@ -624,19 +489,15 @@ function scrollToDay(dayId) {
 }
 
 function setupScrollSpy() {
-  const sections = document.querySelectorAll('.day-section');
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(e => {
       if (e.isIntersecting) {
-        const dayId = e.target.id;
         document.querySelectorAll('.nav-day-btn').forEach(btn => btn.classList.remove('active'));
-        const activeBtn = document.getElementById('nav-btn-' + dayId);
-        if (activeBtn) activeBtn.classList.add('active');
+        document.getElementById('nav-btn-' + e.target.id)?.classList.add('active');
       }
     });
   }, { rootMargin: '-30% 0px -60% 0px' });
-
-  sections.forEach(s => observer.observe(s));
+  document.querySelectorAll('.day-section').forEach(s => observer.observe(s));
 }
 
 // ─── Inline comments ──────────────────────────────────────
@@ -644,11 +505,9 @@ function toggleComments(eventId, dayId, eventName) {
   const body  = document.getElementById('comments-body-' + eventId);
   const arrow = document.getElementById('comment-arrow-' + eventId);
   if (!body) return;
-
   const isOpen = body.style.display !== 'none';
   body.style.display = isOpen ? 'none' : 'block';
   if (arrow) arrow.textContent = isOpen ? '▾' : '▴';
-
   if (!isOpen) {
     renderInlineComments(eventId);
     const day = ITINERARY.find(d => d.id === dayId);
@@ -657,29 +516,20 @@ function toggleComments(eventId, dayId, eventName) {
 }
 
 // ─── Modal helpers ─────────────────────────────────────────
-function closeModal(id) {
-  document.getElementById(id)?.classList.remove('open');
-}
+function closeModal(id) { document.getElementById(id)?.classList.remove('open'); }
 
-// Close on overlay click
 document.addEventListener('click', e => {
-  if (e.target.classList.contains('modal-overlay')) {
-    e.target.classList.remove('open');
-  }
-  // Close address suggestions when clicking outside
+  if (e.target.classList.contains('modal-overlay')) e.target.classList.remove('open');
   if (!e.target.closest('.address-autocomplete-wrap')) {
     document.querySelectorAll('.address-suggestions').forEach(el => el.innerHTML = '');
   }
 });
 
-// Close on Escape
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') {
-    document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
-  }
+  if (e.key === 'Escape') document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
 });
 
-// ─── Toast notification ────────────────────────────────────
+// ─── Toast ─────────────────────────────────────────────────
 function showToast(msg) {
   let toast = document.getElementById('toast');
   if (!toast) {
@@ -699,25 +549,20 @@ function formatTime(timeStr) {
   const trimmed = timeStr.trim();
   const prefix = trimmed.startsWith('~') ? '~' : '';
   const raw = prefix ? trimmed.slice(1).trim() : trimmed;
-  const match  = raw.match(/^(\d{1,2}):(\d{2})(?:\s*([AP]M))?$/i);
+  const match = raw.match(/^(\d{1,2}):(\d{2})(?:\s*([AP]M))?$/i);
   if (!match) return timeStr;
-  let hour   = parseInt(match[1], 10);
-  const min    = match[2];
+  let hour = parseInt(match[1], 10);
+  const min = match[2];
   const explicitMeridiem = match[3] ? match[3].toUpperCase() : null;
-
   if (explicitMeridiem === 'PM' && hour < 12) hour += 12;
   if (explicitMeridiem === 'AM' && hour === 12) hour = 0;
-
-  const ampm   = hour >= 12 ? 'PM' : 'AM';
-  const hour12 = hour % 12 || 12;
-  return `${prefix}${hour12}:${min} ${ampm}`;
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  return `${prefix}${hour % 12 || 12}:${min} ${ampm}`;
 }
 
 function getEventImage(event) {
   if (event.image) return event.image;
-  if (event.coords) {
-    return `https://staticmap.openstreetmap.de/staticmap.php?center=${event.coords.lat},${event.coords.lng}&zoom=15&size=1200x420&markers=${event.coords.lat},${event.coords.lng},red-pushpin`;
-  }
+  if (event.coords) return `https://staticmap.openstreetmap.de/staticmap.php?center=${event.coords.lat},${event.coords.lng}&zoom=15&size=1200x420&markers=${event.coords.lat},${event.coords.lng},red-pushpin`;
   return null;
 }
 
