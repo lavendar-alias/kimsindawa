@@ -196,98 +196,113 @@ function showReplyForm(parentId, eventId, parentAuthor) {
 }
 
 // ─── Submit a new top-level comment ───────────────────────
-async function submitInlineComment(eventId) {
+function submitInlineComment(eventId) {
   if (!currentUser) { openAuthModal(); return; }
 
   const textarea = document.getElementById('inline-text-' + eventId);
-  const content  = textarea?.value.trim();
-  if (!content) { textarea?.focus(); return; }
+  const content  = textarea ? textarea.value.trim() : '';
+  if (!content) { if (textarea) textarea.focus(); return; }
 
-  const typeEl = document.querySelector(`input[name="itype-${eventId}"]:checked`);
+  const typeEl = document.querySelector('input[name="itype-' + eventId + '"]:checked');
   const type   = typeEl ? typeEl.value : 'comment';
 
-  const day   = ITINERARY.find(d => d.events.some(e => e.id === eventId));
+  const day   = ITINERARY.find(function(d) { return d.events.some(function(e) { return e.id === eventId; }); });
   const dayId = day ? day.id : 'unknown';
 
-  const comment = await _saveComment({ eventId, dayId, content, type, parentId: null });
-  if (!comment) return;
+  // Build comment immediately
+  const comment = _buildComment(eventId, dayId, content, type, null);
 
+  // Show in UI right away — don't wait for network
   textarea.value = '';
   if (!commentsCache[eventId]) commentsCache[eventId] = [];
   commentsCache[eventId].push(comment);
-
   renderInlineComments(eventId);
   refreshCommentCounts();
+
+  // Save in the background
+  _persistComment(comment, dayId);
 }
 
 // ─── Submit a reply ────────────────────────────────────────
-async function submitReply(parentId, eventId) {
+function submitReply(parentId, eventId) {
   if (!currentUser) { openAuthModal(); return; }
 
   const textarea = document.getElementById('reply-text-' + parentId);
-  const content  = textarea?.value.trim();
-  if (!content) { textarea?.focus(); return; }
+  const content  = textarea ? textarea.value.trim() : '';
+  if (!content) { if (textarea) textarea.focus(); return; }
 
-  const day   = ITINERARY.find(d => d.events.some(e => e.id === eventId));
+  const day   = ITINERARY.find(function(d) { return d.events.some(function(e) { return e.id === eventId; }); });
   const dayId = day ? day.id : 'unknown';
 
-  const reply = await _saveComment({ eventId, dayId, content, type: 'comment', parentId });
-  if (!reply) return;
+  const reply = _buildComment(eventId, dayId, content, 'comment', parentId);
 
+  // Show immediately
+  if (textarea) textarea.value = '';
   if (!commentsCache[eventId]) commentsCache[eventId] = [];
   commentsCache[eventId].push(reply);
-
   renderInlineComments(eventId);
   refreshCommentCounts();
+
+  _persistComment(reply, dayId);
 }
 
-// ─── Core save helper ─────────────────────────────────────
-async function _saveComment({ eventId, dayId, content, type, parentId }) {
-  const comment = {
-    id:         'local-' + Date.now(),   // always have a local ID; overwritten by Supabase if successful
+// ─── Build a comment object (synchronous) ─────────────────
+function _buildComment(eventId, dayId, content, type, parentId) {
+  return {
+    id:         'local-' + Date.now(),
     created_at: new Date().toISOString(),
     event_id:   eventId,
     day_id:     dayId,
     user_id:    null,
     user_name:  currentUser.name,
-    content,
-    type,
+    content:    content,
+    type:       type,
     parent_id:  parentId || null,
   };
+}
 
-  if (USE_SUPABASE) {
-    try {
-      const payload = {
-        event_id:  comment.event_id,
-        day_id:    comment.day_id,
-        user_name: comment.user_name,
-        content:   comment.content,
-        type:      comment.type,
-      };
-      if (comment.parent_id) payload.parent_id = comment.parent_id;
+// ─── Persist comment to Supabase + localStorage (async, background) ───
+function _persistComment(comment, dayId) {
+  // Always save locally first
+  saveLocalComment(dayId, comment.event_id, comment);
 
-      const { data, error } = await supabase
-        .from('comments')
-        .insert(payload)
-        .select()
-        .single();
+  if (!USE_SUPABASE) return;
 
-      if (error) {
-        console.error('Comment save error:', error);
-        saveLocalComment(dayId, eventId, comment);
-        showToast('Comment saved on this device only.');
-      } else {
-        Object.assign(comment, data);
+  var payload = {
+    event_id:  comment.event_id,
+    day_id:    comment.day_id,
+    user_name: comment.user_name,
+    content:   comment.content,
+    type:      comment.type,
+  };
+  if (comment.parent_id) payload.parent_id = comment.parent_id;
+
+  supabase
+    .from('comments')
+    .insert(payload)
+    .select()
+    .single()
+    .then(function(result) {
+      if (result.error) {
+        console.warn('Supabase comment save failed (stored locally):', result.error);
+      } else if (result.data) {
+        // Update the in-memory entry with the real Supabase ID
+        var list = commentsCache[comment.event_id];
+        if (list) {
+          var idx = list.findIndex(function(c) { return c.id === comment.id; });
+          if (idx !== -1) list[idx] = Object.assign({}, comment, result.data);
+        }
       }
-    } catch (err) {
-      console.error('Comment save exception:', err);
-      saveLocalComment(dayId, eventId, comment);
-      showToast('Comment saved on this device only.');
-    }
-  } else {
-    saveLocalComment(dayId, eventId, comment);
-  }
+    })
+    .catch(function(err) {
+      console.warn('Supabase comment save exception (stored locally):', err);
+    });
+}
 
+// Keep old name used by any external callers
+async function _saveComment({ eventId, dayId, content, type, parentId }) {
+  const comment = _buildComment(eventId, dayId, content, type, parentId);
+  _persistComment(comment, dayId);
   return comment;
 }
 
@@ -568,3 +583,4 @@ async function openCommentHistoryModal() {
       </div>`;
   }).join('');
 }
+
