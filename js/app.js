@@ -16,6 +16,7 @@ async function refreshApp() {
   if (!container) return;
 
   try { await loadEventOverrides(); } catch (e) { console.warn('Overrides unavailable:', e); }
+  extractDayOrders(); // populate dayOrders from loaded overrides
   renderAllDays();
   updateAuthUI(); // call AFTER render so auth-dependent controls exist in the DOM
   if (currentUser) baselineSeenForNewUser();
@@ -64,19 +65,29 @@ function renderAuthGate() {
 // ─── Navigation ────────────────────────────────────────────
 function renderNav() {
   const container = document.getElementById('navDays');
-  container.innerHTML = ITINERARY.map((day, i) => `
+  container.innerHTML = ITINERARY.map(day => `
     <button class="nav-day-btn" onclick="scrollToDay('${day.id}')" id="nav-btn-${day.id}">
       <span class="nav-day-emoji">${day.emoji}</span>
       <span class="nav-day-label">Apr ${day.date.split('-')[2]}</span>
     </button>`).join('');
 
-  // Inject comment history button into nav-auth area before the auth button
+  // Inject search + comment history buttons into nav-auth area before the auth button
   const authArea = document.getElementById('userInfo');
+  if (authArea && !document.getElementById('searchBtn')) {
+    const searchBtn = document.createElement('button');
+    searchBtn.id = 'searchBtn';
+    searchBtn.className = 'btn-nav-search';
+    searchBtn.innerHTML = '🔍';
+    searchBtn.title = 'Search stops  (/)';
+    searchBtn.onclick = openSearch;
+    authArea.parentNode.insertBefore(searchBtn, authArea);
+  }
   if (authArea && !document.getElementById('commentHistoryBtn')) {
     const btn = document.createElement('button');
     btn.id = 'commentHistoryBtn';
     btn.className = 'btn-nav-comments';
-    btn.innerHTML = '💬 Comments <span class="nav-comments-badge" id="navCommentsBadge" style="display:none"></span>';
+    btn.innerHTML = '💬 <span class="nav-comments-badge" id="navCommentsBadge" style="display:none"></span>';
+    btn.title = 'All Comments';
     btn.onclick = openCommentHistoryModal;
     authArea.parentNode.insertBefore(btn, authArea);
   }
@@ -110,7 +121,8 @@ function renderAllDays() {
 }
 
 function renderDay(day) {
-  const eventsHtml = day.events.map((event, idx) => renderEvent(event, day, idx)).join('');
+  const events = getSortedEvents(day);
+  const eventsHtml = events.map((event, idx) => renderEvent(event, day, idx)).join('');
   const dateNum = day.date.split('-')[2];
 
   return `
@@ -212,6 +224,8 @@ function renderEvent(event, day, idx) {
                 <a class="event-title-link" href="${googleSearchUrl}" target="_blank" rel="noopener">${escapeHtml(e.title)}</a>
               </h3>
               <div class="event-actions">
+                <button class="action-btn move-btn edit-btn" onclick="moveEvent('${e.id}', '${day.id}', 'up')" title="Move earlier" style="display:none;">↑</button>
+                <button class="action-btn move-btn edit-btn" onclick="moveEvent('${e.id}', '${day.id}', 'down')" title="Move later" style="display:none;">↓</button>
                 <button class="action-btn history-btn edit-btn" onclick="openHistoryModal('${e.id}', '${escapeHtml(e.title).replace(/'/g,"\\'")}', '${day.id}')" title="Edit History" style="display:none;">
                   🕐
                 </button>
@@ -225,6 +239,12 @@ function renderEvent(event, day, idx) {
             <a class="event-address" href="${makeGoogleMapsLink(e.coords)}" target="_blank">
               📍 ${escapeHtml(e.address)}
             </a>` : ''}
+          </div>
+
+          <div class="event-ext-links">
+            ${e.coords ? `<a class="event-ext-link" href="https://www.google.com/maps/search/?api=1&query=${e.coords.lat},${e.coords.lng}" target="_blank">🗺️ Maps</a>` : ''}
+            <a class="event-ext-link" href="https://www.google.com/search?q=${encodeURIComponent((e.title || '') + ' Seattle')}" target="_blank">🔍 Google</a>
+            ${e.website ? `<a class="event-ext-link" href="${e.website}" target="_blank">🌐 Website</a>` : ''}
           </div>
 
           <p class="event-description" id="desc-${e.id}" data-field="description" data-event="${e.id}" data-day="${day.id}">${escapeHtml(e.description)}</p>
@@ -287,8 +307,18 @@ function renderEvent(event, day, idx) {
                    oninput="onAddressInput('${e.id}', this.value)">
             <div class="address-suggestions" id="addr-suggestions-${e.id}"></div>
           </div>
+          <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;">
+            <button type="button" class="edit-ext-btn" onclick="openMapsForEdit('${e.id}')">🗺️ Open in Google Maps</button>
+            <a class="edit-ext-btn" href="https://www.google.com/search?q=${encodeURIComponent((e.title || '') + ' Seattle')}" target="_blank">🔍 Google Search</a>
+            ${e.website ? `<a class="edit-ext-btn" href="${e.website}" target="_blank">🌐 Website</a>` : ''}
+          </div>
         </div>
         <div id="edit-map-${e.id}" class="edit-mini-map" style="display:none;"></div>
+        <div class="form-group">
+          <label>Website</label>
+          <input type="url" id="edit-website-${e.id}" value="${escapeHtml(e.website || '')}" placeholder="https://…">
+          <small class="form-help">Optional — adds a Website button on the stop card.</small>
+        </div>
         <div class="edit-row">
           <div class="form-group">
             <label>Time</label>
@@ -427,6 +457,7 @@ async function saveEdit(eventId, dayId) {
   const newCost    = document.getElementById('edit-cost-'    + eventId)?.value.trim();
   const newAddress = document.getElementById('edit-address-' + eventId)?.value.trim();
   const newImage   = document.getElementById('edit-image-'   + eventId)?.value.trim();
+  const newWebsite = document.getElementById('edit-website-' + eventId)?.value.trim();
 
   const day   = ITINERARY.find(d => d.id === dayId);
   const event = day?.events.find(e => e.id === eventId);
@@ -461,6 +492,9 @@ async function saveEdit(eventId, dayId) {
   if (newImage !== undefined && newImage !== (cur.image || '')) {
     updates.image = newImage || null;
     historyPromises.push(saveEditHistory(eventId, dayId, 'image', cur.image, newImage || '(removed)'));
+  }
+  if (newWebsite !== undefined && newWebsite !== (cur.website || '')) {
+    updates.website = newWebsite || null;
   }
   if (eventOverrides[eventId]?._pendingCoords) {
     updates.coords = eventOverrides[eventId]._pendingCoords;
@@ -699,7 +733,7 @@ function loadEventImageFile(eventId, files) {
   reader.onload = () => {
     const input = document.getElementById('edit-image-' + eventId);
     if (input) input.value = reader.result;
-    showToast('Photo attached. Save Changes to use it.');
+    showToast('Photo attached — this device only. Paste an image URL for all devices.');
     onPhotoInputChange(eventId);
   };
   reader.onerror = () => showToast('Could not read that photo.');
@@ -720,7 +754,7 @@ function handlePhotoDrop(eventId, event) {
   reader.onload = () => {
     const input = document.getElementById('edit-image-' + eventId);
     if (input) input.value = reader.result;
-    showToast('Photo attached — Save Changes to apply.');
+    showToast('Photo attached — this device only. Paste an image URL for all devices.');
     onPhotoInputChange(eventId);
   };
   reader.onerror = () => showToast('Could not read that photo.');
@@ -931,10 +965,17 @@ document.addEventListener('click', e => {
   }
 });
 
-// Close on Escape
+// Close on Escape; open search on /
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
+    closeSearch();
     document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+  }
+  // '/' or Ctrl+K opens search (unless focused in an input)
+  if ((e.key === '/' || (e.key === 'k' && (e.ctrlKey || e.metaKey))) &&
+      !e.target.closest('input, textarea, [contenteditable]')) {
+    e.preventDefault();
+    openSearch();
   }
 });
 
@@ -997,4 +1038,169 @@ function findEventById(id) {
     if (evt) return evt;
   }
   return null;
+}
+
+// ─── Day ordering ──────────────────────────────────────────
+const dayOrders = {};
+
+function extractDayOrders() {
+  Object.entries(eventOverrides).forEach(([key, data]) => {
+    if (key.startsWith('__order__') && data && data._order) {
+      dayOrders[key.replace('__order__', '')] = data._order;
+    }
+  });
+}
+
+function getSortedEvents(day) {
+  const order = dayOrders[day.id];
+  if (!order || order.length === 0) return day.events;
+  const sorted = order.map(id => day.events.find(e => e.id === id)).filter(Boolean);
+  const inOrder = new Set(order);
+  const extra = day.events.filter(e => !inOrder.has(e.id));
+  return [...sorted, ...extra];
+}
+
+function moveEvent(eventId, dayId, direction) {
+  if (!currentUser) { openAuthModal(); return; }
+  const day = ITINERARY.find(d => d.id === dayId);
+  if (!day) return;
+
+  const order = [...(dayOrders[dayId] || day.events.map(e => e.id))];
+  const idx = order.indexOf(eventId);
+  if (idx < 0) return;
+  const swap = direction === 'up' ? idx - 1 : idx + 1;
+  if (swap < 0 || swap >= order.length) return;
+  [order[idx], order[swap]] = [order[swap], order[idx]];
+  dayOrders[dayId] = order;
+
+  // Clear stale Leaflet instances so re-render can reinitialize them
+  day.events.forEach(e => {
+    delete mapInstances[e.id];
+    delete mapInstances['edit-' + e.id];
+  });
+
+  // Re-render only the timeline rows
+  const section = document.getElementById(dayId);
+  const timeline = section?.querySelector('.day-timeline');
+  if (!timeline) return;
+  const sorted = getSortedEvents(day);
+  timeline.innerHTML = sorted.map((event, i) => renderEvent(event, day, i)).join('');
+  updateAuthUI();
+  refreshCommentCounts();
+  requestAnimationFrame(() => {
+    sorted.forEach(event => {
+      const e = { ...event, ...(eventOverrides[event.id] || {}) };
+      if (e.coords) initMiniMap(e.id, e.coords.lat, e.coords.lng, e.title);
+    });
+  });
+
+  // Persist order as a special event_overrides entry
+  saveEventOverride('__order__' + dayId, { _order: order });
+  showToast('Order updated!');
+}
+
+// ─── Stop search ────────────────────────────────────────────
+function openSearch() {
+  let overlay = document.getElementById('searchOverlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'searchOverlay';
+    overlay.className = 'search-overlay';
+    overlay.innerHTML = `
+      <div class="search-inner">
+        <div class="search-input-wrap">
+          <span class="search-icon-glyph">🔍</span>
+          <input type="text" id="searchInput" class="search-input"
+                 placeholder="Search stops, restaurants, activities…"
+                 oninput="renderSearchResults(this.value)"
+                 autocomplete="off">
+          <button class="search-close-btn" onclick="closeSearch()">×</button>
+        </div>
+        <div id="searchResults" class="search-results"></div>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', e => { if (e.target === overlay) closeSearch(); });
+  }
+  overlay.style.display = 'flex';
+  requestAnimationFrame(() => overlay.classList.add('open'));
+  setTimeout(() => document.getElementById('searchInput')?.focus(), 60);
+  renderSearchResults('');
+}
+
+function closeSearch() {
+  const overlay = document.getElementById('searchOverlay');
+  if (!overlay) return;
+  overlay.classList.remove('open');
+  setTimeout(() => { overlay.style.display = 'none'; }, 200);
+}
+
+function renderSearchResults(query) {
+  const el = document.getElementById('searchResults');
+  if (!el) return;
+  const q = query.toLowerCase().trim();
+
+  const results = [];
+  ITINERARY.forEach(day => {
+    getSortedEvents(day).forEach(event => {
+      const e = { ...event, ...(eventOverrides[event.id] || {}) };
+      const haystack = [e.title, e.description, e.address, e.category].join(' ').toLowerCase();
+      if (!q || haystack.includes(q)) results.push({ e, day });
+    });
+  });
+
+  if (results.length === 0) {
+    el.innerHTML = `<p class="search-no-results">No stops match "<em>${escapeHtml(query)}</em>"</p>`;
+    return;
+  }
+
+  el.innerHTML = results.slice(0, 30).map(({ e, day }) => {
+    const catInfo = CATEGORY_ICONS[e.category] || { icon: '📍' };
+    const mapsUrl = e.coords
+      ? `https://www.google.com/maps/search/?api=1&query=${e.coords.lat},${e.coords.lng}` : null;
+    const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(e.title + ' Seattle')}`;
+    const shortAddr = e.address ? e.address.split(',').slice(0, 2).join(',') : '';
+    return `
+      <div class="search-result-item" onclick="jumpToStop('${e.id}', '${day.id}')">
+        <span class="sr-icon">${catInfo.icon}</span>
+        <div class="sr-body">
+          <div class="sr-name">${escapeHtml(e.title)}</div>
+          <div class="sr-meta">
+            <span class="sr-day" style="color:${day.accentColor}">${day.emoji} ${escapeHtml(day.title)}</span>
+            ${shortAddr ? `<span class="sr-addr"> · ${escapeHtml(shortAddr)}</span>` : ''}
+          </div>
+        </div>
+        <div class="sr-links">
+          ${mapsUrl ? `<a href="${mapsUrl}" target="_blank" onclick="event.stopPropagation()" class="sr-link" title="Google Maps">🗺️</a>` : ''}
+          <a href="${searchUrl}" target="_blank" onclick="event.stopPropagation()" class="sr-link" title="Google Search">🔍</a>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function jumpToStop(eventId, dayId) {
+  closeSearch();
+  setTimeout(() => {
+    const el = document.getElementById('event-' + eventId);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('stop-highlight');
+      setTimeout(() => el.classList.remove('stop-highlight'), 1800);
+    } else {
+      scrollToDay(dayId);
+    }
+  }, 220);
+}
+
+// ─── Edit panel: open address in Google Maps live ──────────
+function openMapsForEdit(eventId) {
+  const addressInput = document.getElementById('edit-address-' + eventId);
+  const address = addressInput?.value.trim() || '';
+  const pending = eventOverrides[eventId]?._pendingCoords;
+  let url;
+  if (pending) {
+    url = `https://www.google.com/maps/search/?api=1&query=${pending.lat},${pending.lng}`;
+  } else if (address) {
+    url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+  }
+  if (url) window.open(url, '_blank');
 }
