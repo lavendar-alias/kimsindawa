@@ -18,6 +18,8 @@ async function refreshApp() {
   try { await loadEventOverrides(); } catch (e) { console.warn('Overrides unavailable:', e); }
   renderAllDays();
   updateAuthUI(); // call AFTER render so auth-dependent controls exist in the DOM
+  if (currentUser) baselineSeenForNewUser();
+  refreshUnreadBadge();
   renderReservationBanner();
   setupScrollSpy();
   autoScrollToToday();
@@ -74,7 +76,7 @@ function renderNav() {
     const btn = document.createElement('button');
     btn.id = 'commentHistoryBtn';
     btn.className = 'btn-nav-comments';
-    btn.textContent = '💬 Comments';
+    btn.innerHTML = '💬 Comments <span class="nav-comments-badge" id="navCommentsBadge" style="display:none"></span>';
     btn.onclick = openCommentHistoryModal;
     authArea.parentNode.insertBefore(btn, authArea);
   }
@@ -903,8 +905,13 @@ function toggleComments(eventId, dayId, eventName) {
 
   if (!isOpen) {
     renderInlineComments(eventId);
+    // Mark currently cached comments as seen when the section is opened
+    markSeen((commentsCache[eventId] || []).map(c => c.id));
     const day = ITINERARY.find(d => d.id === dayId);
-    if (day) loadCommentsForDay(dayId).then(() => renderInlineComments(eventId));
+    if (day) loadCommentsForDay(dayId).then(() => {
+      renderInlineComments(eventId);
+      markSeen((commentsCache[eventId] || []).map(c => c.id));
+    });
   }
 }
 
@@ -991,4 +998,3 @@ function findEventById(id) {
   }
   return null;
 }
-
