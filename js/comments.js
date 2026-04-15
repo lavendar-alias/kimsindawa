@@ -8,6 +8,62 @@ let activeEventName = null;
 // Loaded comments keyed by eventId
 const commentsCache = {};
 
+// ─── Unread / seen tracking (per device) ─────────────────
+function _seenKey() {
+  return currentUser ? 'kims_seen_' + currentUser.id : null;
+}
+function getSeenIds() {
+  const key = _seenKey();
+  if (!key) return new Set();
+  try { return new Set(JSON.parse(localStorage.getItem(key) || '[]')); }
+  catch (_) { return new Set(); }
+}
+function markSeen(ids) {
+  const key = _seenKey();
+  if (!key || !ids || !ids.length) return;
+  const seen = getSeenIds();
+  ids.forEach(id => seen.add(String(id)));
+  try { localStorage.setItem(key, JSON.stringify([...seen])); } catch (_) {}
+  refreshUnreadBadge();
+}
+function markAllSeen() {
+  const all = [];
+  Object.values(commentsCache).forEach(list => list.forEach(c => all.push(c.id)));
+  markSeen(all);
+}
+// Called once after a user first sets their nickname — baselines existing comments so nothing old shows as unread
+function baselineSeenForNewUser() {
+  const key = _seenKey();
+  if (!key) return;
+  if (localStorage.getItem(key) !== null) return; // already has history
+  markAllSeen();
+}
+function getUnreadCount() {
+  if (!currentUser) return 0;
+  const seen = getSeenIds();
+  let n = 0;
+  Object.values(commentsCache).forEach(list => {
+    list.forEach(c => {
+      if (!seen.has(String(c.id)) && c.user_name !== currentUser.name) n++;
+    });
+  });
+  return n;
+}
+function refreshUnreadBadge() {
+  const badge = document.getElementById('navCommentsBadge');
+  if (!badge) return;
+  const n = getUnreadCount();
+  badge.textContent = n > 99 ? '99+' : String(n);
+  badge.style.display = n > 0 ? 'inline-flex' : 'none';
+}
+function _refreshHistoryIfOpen() {
+  const modal = document.getElementById('commentHistoryModal');
+  if (!modal || !modal.classList.contains('open')) return;
+  _renderCommentHistoryList();
+  markAllSeen();
+  refreshUnreadBadge();
+}
+
 function getLocalComments(dayId) {
   try {
     return JSON.parse(localStorage.getItem('kims_comments_' + dayId) || '{}');
@@ -58,6 +114,8 @@ async function loadCommentsForDay(dayId) {
     }
   }
   refreshCommentCounts();
+  refreshUnreadBadge();
+  _refreshHistoryIfOpen();
 }
 
 // ─── Refresh comment count badges ──────────────────────────
@@ -218,6 +276,9 @@ function submitInlineComment(eventId) {
   commentsCache[eventId].push(comment);
   renderInlineComments(eventId);
   refreshCommentCounts();
+  markSeen([comment.id]); // own comment is always seen
+  refreshUnreadBadge();
+  _refreshHistoryIfOpen();
 
   // Save in the background
   _persistComment(comment, dayId);
@@ -242,6 +303,9 @@ function submitReply(parentId, eventId) {
   commentsCache[eventId].push(reply);
   renderInlineComments(eventId);
   refreshCommentCounts();
+  markSeen([reply.id]);
+  refreshUnreadBadge();
+  _refreshHistoryIfOpen();
 
   _persistComment(reply, dayId);
 }
@@ -513,10 +577,18 @@ async function openCommentHistoryModal() {
   const listEl = document.getElementById('commentHistoryList');
   listEl.innerHTML = '<p class="no-comments">Loading comments…</p>';
 
-  // Load comments for every day
+  // Load all days, then render and mark everything as seen
   await Promise.all(ITINERARY.map(day => loadCommentsForDay(day.id)));
+  _renderCommentHistoryList();
+  markAllSeen();
+  refreshUnreadBadge();
+}
 
-  // Flatten all top-level comments with their context
+// ─── Renders the comment history list (called on open + real-time updates) ──
+function _renderCommentHistoryList() {
+  const listEl = document.getElementById('commentHistoryList');
+  if (!listEl) return;
+
   const allComments = [];
   ITINERARY.forEach(day => {
     day.events.forEach(event => {
@@ -530,13 +602,11 @@ async function openCommentHistoryModal() {
           dayEmoji:  day.emoji,
           dayId:     day.id,
           eventName: event.title,
-          eventId:   event.id,
         });
       });
     });
   });
 
-  // Newest first
   allComments.sort((a, b) => new Date(b.comment.created_at) - new Date(a.comment.created_at));
 
   if (allComments.length === 0) {
@@ -544,25 +614,32 @@ async function openCommentHistoryModal() {
     return;
   }
 
+  const seen = getSeenIds();
+
   listEl.innerHTML = allComments.map(({ comment, replies, dayTitle, dayEmoji, dayId, eventName }) => {
     const date    = new Date(comment.created_at);
     const timeStr = formatCommentDate(date);
     const typeTag = comment.type === 'suggestion'
       ? `<span class="comment-type suggestion-tag">💡 Suggestion</span>` : '';
+    const isUnread = currentUser
+      && comment.user_name !== currentUser.name
+      && !seen.has(String(comment.id));
 
     const repliesHtml = replies.length > 0
-      ? `<div class="ch-replies">${replies.map(r => `
-          <div class="ch-reply">
+      ? `<div class="ch-replies">${replies.map(r => {
+          const rUnread = currentUser && r.user_name !== currentUser.name && !seen.has(String(r.id));
+          return `<div class="ch-reply${rUnread ? ' ch-unread-item' : ''}">
             <span class="ic-avatar small">${getInitials(r.user_name)}</span>
             <div>
               <span class="ic-name">${escapeHtml(r.user_name)}</span>
               <span class="ic-time">${formatCommentDate(new Date(r.created_at))}</span>
               <p class="ic-body">${escapeHtml(r.content)}</p>
             </div>
-          </div>`).join('')}</div>` : '';
+          </div>`;
+        }).join('')}</div>` : '';
 
     return `
-      <div class="ch-entry">
+      <div class="ch-entry${isUnread ? ' ch-unread-item' : ''}">
         <div class="ch-location">
           <span class="ch-day-tag">${dayEmoji} ${escapeHtml(dayTitle)}</span>
           <span class="ch-stop-name">· ${escapeHtml(eventName)}</span>
@@ -583,4 +660,3 @@ async function openCommentHistoryModal() {
       </div>`;
   }).join('');
 }
-
