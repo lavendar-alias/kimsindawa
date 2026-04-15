@@ -592,3 +592,75 @@ a.res-chip:hover { background: rgba(255,255,255,0.25); }
 
 /* ─── Selection ──────────────────────────────────────────── */
 ::selection { background: rgba(30,77,107,0.2); }
+
+/* ─── Navbar comment history button ─────────────────────── */
+.btn-nav-comments {
+  padding: 6px 12px;
+  border-radius: 20px;
+  background: rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.8);
+  font-size: 0.8rem;
+  font-weight: 500;
+  border: 1px solid rgba(255,255,255,0.2);
+  transition: var(--transition);
+  white-space: nowrap;
+}
+.btn-nav-comments:hover { background: rgba(255,255,255,0.22); color: var(--white); }
+
+/* ─── Comment history modal entries ─────────────────────── */
+.ch-entry {
+  border-bottom: 1px solid var(--fog);
+  padding: 16px 0;
+}
+.ch-entry:last-child { border-bottom: none; padding-bottom: 0; }
+
+.ch-location {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.ch-day-tag {
+  font-size: 0.68rem;
+  font-weight: 700;
+  background: var(--lake);
+  color: var(--white);
+  padding: 2px 9px;
+  border-radius: 20px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+.ch-stop-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--charcoal);
+  flex: 1;
+}
+.ch-goto-btn {
+  font-size: 0.72rem;
+  color: var(--lake);
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 6px;
+  transition: var(--transition);
+  flex-shrink: 0;
+}
+.ch-goto-btn:hover { background: var(--fog); }
+
+.ch-comment {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.ch-reply {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-top: 8px;
+  margin-left: 18px;
+  padding-left: 12px;
+  border-left: 2px solid var(--fog);
+}
+
