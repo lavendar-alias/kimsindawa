@@ -126,6 +126,54 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
 }
 .btn-auth:hover { background: rgba(255,255,255,0.25); }
 
+/* ─── Admin sync bar ─────────────────────────────────────── */
+.admin-sync-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+  background: #1a1a2e;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  flex-wrap: wrap;
+  position: sticky;
+  top: 64px;   /* sits just below the navbar */
+  z-index: 90;
+}
+.admin-bar-label {
+  color: rgba(255,255,255,0.5);
+  font-size: 0.75rem;
+  font-family: var(--font-sans);
+  margin-right: 4px;
+}
+.admin-bar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: 1px solid rgba(255,255,255,0.2);
+  background: rgba(255,255,255,0.07);
+  color: rgba(255,255,255,0.85);
+  font-size: 0.78rem;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+}
+.admin-bar-btn:hover  { background: rgba(255,255,255,0.15); }
+.admin-bar-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.admin-bar-btn.primary {
+  background: var(--lake);
+  border-color: var(--mist);
+  color: #fff;
+  font-weight: 600;
+}
+.admin-bar-btn.primary:hover { background: #1a5c80; }
+@media (max-width: 600px) {
+  .admin-sync-bar { top: 56px; gap: 6px; padding: 6px 12px; }
+  .admin-bar-btn  { font-size: 0.72rem; padding: 4px 10px; }
+}
+
 /* ─── Sync status dot ────────────────────────────────────── */
 .sync-status-dot {
   display: inline-block;
