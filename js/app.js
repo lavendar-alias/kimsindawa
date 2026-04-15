@@ -15,18 +15,11 @@ async function refreshApp() {
   const container = document.getElementById('daysContainer');
   if (!container) return;
 
-  if (!currentUser) {
-    renderAuthGate();
-    return;
-  }
-
-  // Logged in — show the itinerary
   try { await loadEventOverrides(); } catch (e) { console.warn('Overrides unavailable:', e); }
   renderAllDays();
-  updateAuthUI(); // call AFTER render so edit buttons exist in the DOM
+  updateAuthUI(); // call AFTER render so auth-dependent controls exist in the DOM
   renderReservationBanner();
   setupScrollSpy();
-  setupStickyDayHeader();
   autoScrollToToday();
 
   // Lazy-load comments for visible days
@@ -42,7 +35,6 @@ async function refreshApp() {
   document.querySelectorAll('.day-section').forEach(el => observer.observe(el));
 }
 
-// ─── Auth gate ─────────────────────────────────────────────
 function renderAuthGate() {
   const container = document.getElementById('daysContainer');
   container.innerHTML = `
@@ -125,6 +117,13 @@ function renderDay(day) {
         <div class="day-overview-map" id="map-overview-${day.id}"></div>
       </div>
 
+      <!-- Sticky day indicator — sticks as you scroll through events -->
+      <div class="day-sticky-indicator" style="--day-accent:${day.accentColor};" data-day-id="${day.id}">
+        <span class="dsi-emoji">${day.emoji}</span>
+        <span class="dsi-label">Day ${day.dayNumber} · ${day.title}</span>
+        <span class="dsi-date">April ${dateNum}</span>
+      </div>
+
       <div class="day-timeline">
         ${eventsHtml}
       </div>
@@ -162,10 +161,10 @@ function renderEvent(event, day, idx) {
     ? `<div class="event-alt-note">ℹ️ ${escapeHtml(e.altNote)}</div>` : '';
 
   // Photo banner
-  const imageSrc = getEventImageSrc(e.image);
+  const imageSrc = getEventImage(e);
   const photoHtml = imageSrc
     ? `<div class="event-photo-wrap">
-         <img class="event-photo" src="${escapeHtml(imageSrc)}" alt="${escapeHtml(e.title)}" loading="lazy" onerror="this.parentElement.style.display='none'">
+         <img class="event-photo" src="${imageSrc}" alt="${escapeHtml(e.title)}" loading="lazy" onerror="handleEventImageError(this, '${e.coords ? '1' : '0'}', '${e.coords?.lat ?? ''}', '${e.coords?.lng ?? ''}', '${escapeHtml(e.title).replace(/'/g,"\\'")}')">
        </div>` : '';
 
   // Google search link for the stop title
@@ -184,63 +183,62 @@ function renderEvent(event, day, idx) {
         ${!isLast ? '<div class="timeline-line"></div>' : ''}
       </div>
 
-      <div class="event-card" data-event-id="${e.id}">
-        ${photoHtml}
-        ${splitGroupHtml}
-        <div class="event-content-grid">
-          <div class="event-main-content">
-            <div class="event-card-header">
-              <div class="event-title-row">
-                <h3 class="event-title" id="title-${e.id}" data-field="title" data-event="${e.id}" data-day="${day.id}">
-                  <a class="event-title-link" href="${googleSearchUrl}" target="_blank" rel="noopener">${escapeHtml(e.title)}</a>
-                </h3>
-                <div class="event-actions">
-                  <button class="action-btn history-btn edit-btn" onclick="openHistoryModal('${e.id}', '${escapeHtml(e.title).replace(/'/g,"\\'")}', '${day.id}')" title="Edit History" style="display:none;">
-                    🕐
-                  </button>
-                  <button class="action-btn edit-btn" onclick="toggleEditMode('${e.id}', '${day.id}')" title="Edit this stop" style="display:none;">
-                    ✏️
-                  </button>
-                </div>
+      <div class="event-col">
+        <!-- Event card — no overflow:hidden so nothing gets clipped -->
+        <div class="event-card" data-event-id="${e.id}">
+          ${photoHtml}
+          ${splitGroupHtml}
+          <div class="event-card-header">
+            <div class="event-title-row">
+              <h3 class="event-title" id="title-${e.id}" data-field="title" data-event="${e.id}" data-day="${day.id}">
+                <a class="event-title-link" href="${googleSearchUrl}" target="_blank" rel="noopener">${escapeHtml(e.title)}</a>
+              </h3>
+              <div class="event-actions">
+                <button class="action-btn history-btn edit-btn" onclick="openHistoryModal('${e.id}', '${escapeHtml(e.title).replace(/'/g,"\\'")}', '${day.id}')" title="Edit History" style="display:none;">
+                  🕐
+                </button>
+                <button class="action-btn edit-btn" onclick="toggleEditMode('${e.id}', '${day.id}')" title="Edit this stop" style="display:none;">
+                  ✏️
+                </button>
               </div>
-
-              ${e.address ? `
-              <a class="event-address" href="${makeGoogleMapsLink(e.coords)}" target="_blank">
-                📍 ${escapeHtml(e.address)}
-              </a>` : ''}
             </div>
 
-            <p class="event-description" id="desc-${e.id}" data-field="description" data-event="${e.id}" data-day="${day.id}">${escapeHtml(e.description)}</p>
-
-            ${altNoteHtml}
-
-            <div class="event-pills">
-              ${durationHtml}
-              ${costHtml}
-            </div>
-
-            ${reservationHtml}
-            ${commuteHtml}
-
-            ${hasMap ? `<div class="event-map-toggle">
-              <button class="map-toggle-btn" onclick="toggleMap('${e.id}')">🗺️ Show on Map</button>
-              <div class="event-map-container" id="map-${e.id}" style="display:none;"></div>
-            </div>` : ''}
+            ${e.address ? `
+            <a class="event-address" href="${makeGoogleMapsLink(e.coords)}" target="_blank">
+              📍 ${escapeHtml(e.address)}
+            </a>` : ''}
           </div>
 
-          <!-- Side comments (Word-like margin comments) -->
-          <aside class="event-comments-rail" id="inline-comments-${e.id}">
-            <button class="comment-toggle-btn side" onclick="toggleComments('${e.id}', '${day.id}', '${escapeHtml(e.title).replace(/'/g,"\\'")}')">
-              <span class="comment-toggle-icon">💬</span>
-              <span class="comment-toggle-text">Comments</span>
-              <span class="comment-count-badge" id="comment-badge-${e.id}" style="display:none;"></span>
-              <span class="comment-toggle-arrow" id="comment-arrow-${e.id}">▾</span>
-            </button>
-            <div class="comments-body side" id="comments-body-${e.id}" style="display:none;">
-              <div class="comments-list" id="comments-list-${e.id}"></div>
-              <div class="comment-form" id="comment-form-${e.id}"></div>
-            </div>
-          </aside>
+          <p class="event-description" id="desc-${e.id}" data-field="description" data-event="${e.id}" data-day="${day.id}">${escapeHtml(e.description)}</p>
+
+          ${altNoteHtml}
+
+          <div class="event-pills">
+            ${durationHtml}
+            ${costHtml}
+          </div>
+
+          ${reservationHtml}
+          ${commuteHtml}
+
+          ${hasMap ? `<div class="event-map-toggle">
+            <button class="map-toggle-btn" onclick="toggleMap('${e.id}')">🗺️ Show on Map</button>
+            <div class="event-map-container" id="map-${e.id}" style="display:none;"></div>
+          </div>` : ''}
+        </div>
+
+        <!-- Comments panel — sits below the card, outside overflow:hidden -->
+        <div class="inline-comments" id="inline-comments-${e.id}">
+          <button class="comment-toggle-btn" onclick="toggleComments('${e.id}', '${day.id}', '${escapeHtml(e.title).replace(/'/g,"\\'")}')">
+            <span class="comment-toggle-icon">💬</span>
+            <span class="comment-toggle-text">Comments</span>
+            <span class="comment-count-badge" id="comment-badge-${e.id}" style="display:none;"></span>
+            <span class="comment-toggle-arrow" id="comment-arrow-${e.id}">▾</span>
+          </button>
+          <div class="comments-body" id="comments-body-${e.id}" style="display:none;">
+            <div class="comments-list" id="comments-list-${e.id}"></div>
+            <div class="comment-form" id="comment-form-${e.id}"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -258,10 +256,6 @@ function renderEvent(event, day, idx) {
           <textarea id="edit-desc-${e.id}" rows="3">${escapeHtml(e.description)}</textarea>
         </div>
         <div class="form-group">
-          <label>Image URL</label>
-          <input type="text" id="edit-image-${e.id}" value="${escapeHtml(e.image || '')}" placeholder="https://...">
-        </div>
-        <div class="form-group">
           <label>Address</label>
           <div class="address-autocomplete-wrap">
             <input type="text" id="edit-address-${e.id}" value="${escapeHtml(e.address || '')}"
@@ -275,12 +269,30 @@ function renderEvent(event, day, idx) {
         <div class="edit-row">
           <div class="form-group">
             <label>Time</label>
-            <input type="text" id="edit-time-${e.id}" value="${e.time || ''}" placeholder="e.g. 14:30">
+            <input type="text" id="edit-time-${e.id}" value="${e.time || ''}" placeholder="e.g. 14:30 or 2:30 PM">
           </div>
           <div class="form-group">
             <label>Cost</label>
             <input type="text" id="edit-cost-${e.id}" value="${e.cost || ''}">
           </div>
+        </div>
+        <div class="form-group">
+          <label>Photo</label>
+          <div class="photo-upload-wrap" id="photo-drop-${e.id}"
+               ondragover="event.preventDefault(); document.getElementById('photo-drop-${e.id}').classList.add('drag-over')"
+               ondragleave="document.getElementById('photo-drop-${e.id}').classList.remove('drag-over')"
+               ondrop="handlePhotoDrop('${e.id}', event)">
+            <span class="photo-drop-hint">📎 Drag &amp; drop a photo here, or</span>
+            <label class="photo-file-label">
+              Choose file
+              <input type="file" id="edit-image-file-${e.id}" accept="image/*"
+                     onchange="loadEventImageFile('${e.id}', this.files)" style="display:none;">
+            </label>
+          </div>
+          <input class="photo-url-input" type="url" id="edit-image-${e.id}"
+                 value="${escapeHtml(e.image || '')}"
+                 placeholder="…or paste a photo URL">
+          <small class="form-help">URL or file — Save Changes to apply.</small>
         </div>
         ${commuteHtml ? `<div class="edit-commute-preview">${commuteHtml}</div>` : ''}
         <div class="edit-actions">
@@ -406,7 +418,10 @@ async function saveEdit(eventId, dayId) {
   }
   if (newImage !== undefined && newImage !== (cur.image || '')) {
     updates.image = newImage || null;
-    historyPromises.push(saveEditHistory(eventId, dayId, 'image', cur.image || '', newImage || '(removed)'));
+    historyPromises.push(saveEditHistory(eventId, dayId, 'image', cur.image, newImage || '(removed)'));
+  }
+  if (eventOverrides[eventId]?._pendingCoords) {
+    updates.coords = eventOverrides[eventId]._pendingCoords;
   }
 
   if (Object.keys(updates).length === 0) {
@@ -424,11 +439,12 @@ async function saveEdit(eventId, dayId) {
     const evtIdx = ITINERARY[dayIdx].events.findIndex(e => e.id === eventId);
     const wrapper = document.createElement('div');
     wrapper.innerHTML = renderEvent(ITINERARY[dayIdx].events[evtIdx], ITINERARY[dayIdx], evtIdx);
-    container.replaceWith(wrapper.children[0]);
+    const newNodes = Array.from(wrapper.children);
+    container.replaceWith(...newNodes);
     if (editPanel) editPanel.remove();
 
     // Re-init map if exists
-    const evt = ITINERARY[dayIdx].events[evtIdx];
+    const evt = { ...ITINERARY[dayIdx].events[evtIdx], ...(eventOverrides[eventId] || {}) };
     if (evt.coords) {
       requestAnimationFrame(() => initMiniMap(evt.id, evt.coords.lat, evt.coords.lng, evt.title));
     }
@@ -516,6 +532,44 @@ function showEditMap(eventId, lat, lng, title) {
   setTimeout(() => map.invalidateSize(), 100);
 }
 
+function loadEventImageFile(eventId, files) {
+  const file = files && files[0];
+  if (!file) return;
+  if (!file.type.startsWith('image/')) {
+    showToast('Please choose an image file.');
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    const input = document.getElementById('edit-image-' + eventId);
+    if (input) input.value = reader.result;
+    showToast('Photo attached. Save Changes to use it.');
+  };
+  reader.onerror = () => showToast('Could not read that photo.');
+  reader.readAsDataURL(file);
+}
+
+// ─── Photo drag-and-drop ───────────────────────────────────
+function handlePhotoDrop(eventId, event) {
+  event.preventDefault();
+  const dropZone = document.getElementById('photo-drop-' + eventId);
+  if (dropZone) dropZone.classList.remove('drag-over');
+
+  const file = event.dataTransfer?.files?.[0];
+  if (!file) return;
+  if (!file.type.startsWith('image/')) { showToast('Please drop an image file.'); return; }
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    const input = document.getElementById('edit-image-' + eventId);
+    if (input) input.value = reader.result;
+    showToast('Photo attached — Save Changes to apply.');
+  };
+  reader.onerror = () => showToast('Could not read that photo.');
+  reader.readAsDataURL(file);
+}
+
 // ─── Map toggling ──────────────────────────────────────────
 function toggleMap(eventId) {
   const container = document.getElementById('map-' + eventId);
@@ -566,6 +620,7 @@ function autoScrollToToday() {
 function scrollToDay(dayId) {
   const el = document.getElementById(dayId);
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  else document.getElementById('daysContainer')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function setupScrollSpy() {
@@ -584,53 +639,6 @@ function setupScrollSpy() {
   sections.forEach(s => observer.observe(s));
 }
 
-function setupStickyDayHeader() {
-  let sticky = document.getElementById('global-day-sticky');
-  if (!sticky) {
-    sticky = document.createElement('div');
-    sticky.id = 'global-day-sticky';
-    sticky.className = 'global-day-sticky';
-    const anchor = document.getElementById('checklistBanner');
-    if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(sticky, anchor.nextSibling);
-    else document.body.appendChild(sticky);
-  }
-
-  const renderSticky = () => {
-    const offset = window.innerWidth >= 641 ? 100 : 60;
-    const firstDayEl = document.getElementById(ITINERARY[0]?.id || '');
-    if (!firstDayEl) return;
-
-    if (firstDayEl.getBoundingClientRect().top > offset) {
-      sticky.style.display = 'none';
-      return;
-    }
-
-    let activeDay = ITINERARY[0];
-    for (const day of ITINERARY) {
-      const el = document.getElementById(day.id);
-      if (!el) continue;
-      if (el.getBoundingClientRect().top - offset <= 0) activeDay = day;
-    }
-
-    const dateNum = activeDay.date.split('-')[2];
-    sticky.style.setProperty('--day-accent', activeDay.accentColor || '#2E6B8A');
-    sticky.innerHTML = `
-      <span class="dsi-emoji">${activeDay.emoji}</span>
-      <span class="dsi-label">Day ${activeDay.dayNumber} · ${escapeHtml(activeDay.title)}</span>
-      <span class="dsi-date">April ${dateNum}</span>`;
-    sticky.style.display = 'flex';
-  };
-
-  if (window.__stickyDayHandler) {
-    window.removeEventListener('scroll', window.__stickyDayHandler);
-    window.removeEventListener('resize', window.__stickyDayHandler);
-  }
-  window.__stickyDayHandler = renderSticky;
-  window.addEventListener('scroll', window.__stickyDayHandler, { passive: true });
-  window.addEventListener('resize', window.__stickyDayHandler);
-  renderSticky();
-}
-
 // ─── Inline comments ──────────────────────────────────────
 function toggleComments(eventId, dayId, eventName) {
   const body  = document.getElementById('comments-body-' + eventId);
@@ -642,13 +650,9 @@ function toggleComments(eventId, dayId, eventName) {
   if (arrow) arrow.textContent = isOpen ? '▾' : '▴';
 
   if (!isOpen) {
-    // Load comments if not loaded yet
+    renderInlineComments(eventId);
     const day = ITINERARY.find(d => d.id === dayId);
-    if (day && !commentsCache[eventId]) {
-      loadCommentsForDay(dayId).then(() => renderInlineComments(eventId));
-    } else {
-      renderInlineComments(eventId);
-    }
+    if (day) loadCommentsForDay(dayId).then(() => renderInlineComments(eventId));
   }
 }
 
@@ -690,47 +694,42 @@ function showToast(msg) {
 }
 
 // ─── Format helpers ────────────────────────────────────────
-function getEventImageSrc(rawUrl) {
-  const clean = (rawUrl || '').trim();
-  if (!clean) return '';
-
-  // Google Drive shared links -> direct image endpoint
-  const driveMatch = clean.match(/drive\.google\.com\/file\/d\/([^/]+)/);
-  if (driveMatch?.[1]) {
-    return `https://drive.google.com/uc?export=view&id=${driveMatch[1]}`;
-  }
-
-  // Dropbox shared links -> direct download link
-  if (clean.includes('dropbox.com')) {
-    try {
-      const u = new URL(clean);
-      u.searchParams.set('raw', '1');
-      u.searchParams.delete('dl');
-      return u.toString();
-    } catch (_) { /* ignore parse errors */ }
-  }
-
-  // If it already looks like an image URL, use it as-is.
-  if (/\.(png|jpe?g|webp|gif|svg|avif)(\?|#|$)/i.test(clean)) return clean;
-
-  // Fallback: screenshot service for normal page URLs.
-  if (/^https?:\/\//i.test(clean)) {
-    return `https://image.thum.io/get/width/1200/noanimate/${encodeURIComponent(clean)}`;
-  }
-
-  return clean;
-}
-
 function formatTime(timeStr) {
   if (!timeStr) return '';
-  const prefix = timeStr.startsWith('~') ? '~' : '';
-  const match  = timeStr.match(/(\d{1,2}):(\d{2})/);
+  const trimmed = timeStr.trim();
+  const prefix = trimmed.startsWith('~') ? '~' : '';
+  const raw = prefix ? trimmed.slice(1).trim() : trimmed;
+  const match  = raw.match(/^(\d{1,2}):(\d{2})(?:\s*([AP]M))?$/i);
   if (!match) return timeStr;
-  const hour   = parseInt(match[1], 10);
+  let hour   = parseInt(match[1], 10);
   const min    = match[2];
+  const explicitMeridiem = match[3] ? match[3].toUpperCase() : null;
+
+  if (explicitMeridiem === 'PM' && hour < 12) hour += 12;
+  if (explicitMeridiem === 'AM' && hour === 12) hour = 0;
+
   const ampm   = hour >= 12 ? 'PM' : 'AM';
   const hour12 = hour % 12 || 12;
   return `${prefix}${hour12}:${min} ${ampm}`;
+}
+
+function getEventImage(event) {
+  if (event.image) return event.image;
+  if (event.coords) {
+    return `https://staticmap.openstreetmap.de/staticmap.php?center=${event.coords.lat},${event.coords.lng}&zoom=15&size=1200x420&markers=${event.coords.lat},${event.coords.lng},red-pushpin`;
+  }
+  return null;
+}
+
+function handleEventImageError(img, hasCoords, lat, lng, title) {
+  if (!img) return;
+  if (hasCoords === '1' && img.dataset.fallbackApplied !== '1') {
+    img.dataset.fallbackApplied = '1';
+    img.src = `https://staticmap.openstreetmap.de/staticmap.php?center=${lat},${lng}&zoom=15&size=1200x420&markers=${lat},${lng},red-pushpin`;
+    img.alt = `${title} location preview`;
+    return;
+  }
+  img.parentElement.style.display = 'none';
 }
 
 function findEventById(id) {
