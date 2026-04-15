@@ -721,7 +721,7 @@ function showEditMap(eventId, lat, lng, title) {
   setTimeout(() => map.invalidateSize(), 100);
 }
 
-function loadEventImageFile(eventId, files) {
+async function loadEventImageFile(eventId, files) {
   const file = files && files[0];
   if (!file) return;
   if (!file.type.startsWith('image/')) {
@@ -729,19 +729,57 @@ function loadEventImageFile(eventId, files) {
     return;
   }
 
+  // Upload to Supabase Storage so all devices see it
+  if (USE_SUPABASE) {
+    showToast('Uploading photo…');
+    const url = await _uploadPhotoToStorage(eventId, file);
+    if (url) {
+      const input = document.getElementById('edit-image-' + eventId);
+      if (input) input.value = url;
+      onPhotoInputChange(eventId);
+      showToast('Photo uploaded! Hit Save Changes to apply.');
+      return;
+    }
+    showToast('Upload failed — saving locally instead.');
+  }
+
+  // Fallback: data: URL (this device only)
   const reader = new FileReader();
   reader.onload = () => {
     const input = document.getElementById('edit-image-' + eventId);
     if (input) input.value = reader.result;
-    showToast('Photo attached — this device only. Paste an image URL for all devices.');
+    showToast('Photo saved on this device only.');
     onPhotoInputChange(eventId);
   };
   reader.onerror = () => showToast('Could not read that photo.');
   reader.readAsDataURL(file);
 }
 
+// ─── Upload a file to Supabase Storage → returns public URL or null ───
+async function _uploadPhotoToStorage(eventId, file) {
+  try {
+    const ext  = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const path = `events/${eventId}-${Date.now()}.${ext}`;
+
+    const { error } = await supabase.storage
+      .from('trip-photos')
+      .upload(path, file, { upsert: true, contentType: file.type });
+
+    if (error) {
+      console.warn('Storage upload failed:', error);
+      return null;
+    }
+
+    const { data } = supabase.storage.from('trip-photos').getPublicUrl(path);
+    return data?.publicUrl || null;
+  } catch (err) {
+    console.warn('Storage upload exception:', err);
+    return null;
+  }
+}
+
 // ─── Photo drag-and-drop ───────────────────────────────────
-function handlePhotoDrop(eventId, event) {
+async function handlePhotoDrop(eventId, event) {
   event.preventDefault();
   const dropZone = document.getElementById('photo-drop-' + eventId);
   if (dropZone) dropZone.classList.remove('drag-over');
@@ -750,11 +788,24 @@ function handlePhotoDrop(eventId, event) {
   if (!file) return;
   if (!file.type.startsWith('image/')) { showToast('Please drop an image file.'); return; }
 
+  if (USE_SUPABASE) {
+    showToast('Uploading photo…');
+    const url = await _uploadPhotoToStorage(eventId, file);
+    if (url) {
+      const input = document.getElementById('edit-image-' + eventId);
+      if (input) input.value = url;
+      onPhotoInputChange(eventId);
+      showToast('Photo uploaded! Hit Save Changes to apply.');
+      return;
+    }
+    showToast('Upload failed — saving locally instead.');
+  }
+
   const reader = new FileReader();
   reader.onload = () => {
     const input = document.getElementById('edit-image-' + eventId);
     if (input) input.value = reader.result;
-    showToast('Photo attached — this device only. Paste an image URL for all devices.');
+    showToast('Photo saved on this device only.');
     onPhotoInputChange(eventId);
   };
   reader.onerror = () => showToast('Could not read that photo.');
