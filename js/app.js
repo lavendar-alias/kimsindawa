@@ -234,9 +234,9 @@ function renderEvent(event, day, idx) {
               <span class="comment-toggle-icon">💬</span>
               <span class="comment-toggle-text">Comments</span>
               <span class="comment-count-badge" id="comment-badge-${e.id}" style="display:none;"></span>
-              <span class="comment-toggle-arrow" id="comment-arrow-${e.id}">▴</span>
+              <span class="comment-toggle-arrow" id="comment-arrow-${e.id}">▾</span>
             </button>
-            <div class="comments-body side" id="comments-body-${e.id}" style="display:block;">
+            <div class="comments-body side" id="comments-body-${e.id}" style="display:none;">
               <div class="comments-list" id="comments-list-${e.id}"></div>
               <div class="comment-form" id="comment-form-${e.id}"></div>
             </div>
@@ -713,7 +713,7 @@ function getEventImageSrc(rawUrl) {
   // If it already looks like an image URL, use it as-is.
   if (/\.(png|jpe?g|webp|gif|svg|avif)(\?|#|$)/i.test(clean)) return clean;
 
-  // Fallback: screenshot service for normal page URLs (Word-like "any URL" behavior).
+  // Fallback: screenshot service for normal page URLs.
   if (/^https?:\/\//i.test(clean)) {
     return `https://image.thum.io/get/width/1200/noanimate/${encodeURIComponent(clean)}`;
   }
