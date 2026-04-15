@@ -854,6 +854,29 @@ a.res-chip:hover { background: rgba(255,255,255,0.25); }
 }
 .ic-reply-btn:hover { color: var(--lake); }
 
+.ic-delete-btn {
+  font-size: 0.7rem;
+  color: var(--mid);
+  padding: 2px 5px;
+  border-radius: 5px;
+  margin-left: auto;
+  opacity: 0.4;
+  transition: opacity var(--transition), color var(--transition), background var(--transition);
+  flex-shrink: 0;
+}
+.ic-delete-btn:hover {
+  opacity: 1;
+  color: #DC2626;
+  background: #FEE2E2;
+}
+
+.ic-reply-to {
+  font-size: 0.7rem;
+  color: var(--lake);
+  font-weight: 500;
+  opacity: 0.8;
+}
+
 /* ─── Reply thread ───────────────────────────────────────── */
 .reply-thread {
   margin: 8px 0 4px 20px;
@@ -1538,3 +1561,4 @@ a.res-chip:hover { background: rgba(255,255,255,0.25); }
 
 /* ─── Selection ──────────────────────────────────────────── */
 ::selection { background: rgba(30,77,107,0.2); }
+
