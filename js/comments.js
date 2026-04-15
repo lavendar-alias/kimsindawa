@@ -505,15 +505,22 @@ async function loadEventOverrides() {
 
   if (USE_SUPABASE) {
     try {
-      const { data } = await supabase.from('event_overrides').select('*');
+      const { data, error } = await supabase.from('event_overrides').select('*');
+      if (error) {
+        console.error('Supabase load error:', error);
+        _setSyncStatus('error', 'Could not load from server — showing local data.');
+        return;
+      }
       // Supabase data wins over localStorage for any row that exists in both
       if (data) {
         data.forEach(row => { eventOverrides[row.event_id] = row.data; });
         // Cache Supabase data locally so all devices stay in sync across sessions
         try { localStorage.setItem('kims_overrides', JSON.stringify(eventOverrides)); } catch (_) {}
+        _setSyncStatus('ok');
       }
     } catch (e) {
-      console.warn('Could not load event overrides from Supabase, using localStorage data.', e);
+      console.warn('Could not reach Supabase, using localStorage data.', e);
+      _setSyncStatus('error', 'Offline — showing local data.');
     }
   }
 }
@@ -531,23 +538,42 @@ async function saveEventOverride(eventId, updates) {
 
   if (USE_SUPABASE) {
     try {
-      // Strip data: URLs before syncing — they're device-local file uploads and too large for cross-device sync
+      // Strip data: URLs before syncing — they're device-local file uploads (photos go via Storage instead)
       const supabaseData = { ...eventOverrides[eventId] };
       if (supabaseData.image && supabaseData.image.startsWith('data:')) {
         delete supabaseData.image;
       }
-      await supabase.from('event_overrides').upsert({
+      const { error } = await supabase.from('event_overrides').upsert({
         event_id:        eventId,
         data:            supabaseData,
         updated_at:      new Date().toISOString(),
         updated_by_name: currentUser?.name || 'unknown',
-      });
+      }, { onConflict: 'event_id' });
+
+      if (error) {
+        console.error('Supabase override save failed:', error);
+        showToast('⚠️ Sync failed — saved locally only. Check Supabase setup.');
+        _setSyncStatus('error', 'Save failed: ' + (error.message || error.code || 'unknown error'));
+      } else {
+        _setSyncStatus('ok');
+      }
     } catch (err) {
-      // Supabase failed — data is still in localStorage and in-memory, so the page re-renders correctly
-      console.warn('Supabase override save failed, using localStorage fallback:', err);
+      console.warn('Supabase override save exception:', err);
+      showToast('⚠️ Sync failed — saved locally only.');
+      _setSyncStatus('error', 'Network error');
     }
   }
   // Never throws, so Promise.all in saveEdit always completes and the re-render always runs
+}
+
+// ─── Sync status indicator ─────────────────────────────────
+function _setSyncStatus(status, message) {
+  const el = document.getElementById('syncStatusDot');
+  if (!el) return;
+  el.dataset.status = status;
+  el.title = status === 'ok'
+    ? 'Synced with server ✓'
+    : (message || 'Sync error — changes may be local only');
 }
 
 // ─── Utilities ─────────────────────────────────────────────
@@ -775,3 +801,4 @@ function _renderCommentHistoryList() {
       </div>`;
   }).join('');
 }
+
