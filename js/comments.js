@@ -104,8 +104,20 @@ async function loadCommentsForDay(dayId) {
     if (!error && data) {
       data.forEach(c => {
         if (!commentsCache[c.event_id]) commentsCache[c.event_id] = [];
-        if (!commentsCache[c.event_id].find(x => x.id === c.id)) {
-          commentsCache[c.event_id].push(c);
+        const list = commentsCache[c.event_id];
+        // Skip if already present by real ID
+        if (list.find(x => x.id === c.id)) return;
+        // Replace a matching local-only entry (same user_name + content + rough time) to avoid duplicates
+        const localIdx = list.findIndex(x =>
+          String(x.id).startsWith('local-') &&
+          x.user_name === c.user_name &&
+          x.content   === c.content &&
+          x.event_id  === c.event_id
+        );
+        if (localIdx !== -1) {
+          list[localIdx] = c; // swap local entry for the real Supabase one
+        } else {
+          list.push(c);
         }
       });
     } else if (error) {
@@ -359,8 +371,12 @@ function _persistComment(comment, dayId) {
     user_name: comment.user_name,
     content:   comment.content,
     type:      comment.type,
+    user_id:   null,
   };
-  if (comment.parent_id) payload.parent_id = comment.parent_id;
+  // Only send parent_id if it's a real Supabase UUID (not a local temp ID)
+  if (comment.parent_id && !String(comment.parent_id).startsWith('local-')) {
+    payload.parent_id = comment.parent_id;
+  }
 
   supabase
     .from('comments')
@@ -369,18 +385,26 @@ function _persistComment(comment, dayId) {
     .single()
     .then(function(result) {
       if (result.error) {
-        console.warn('Supabase comment save failed (stored locally):', result.error);
+        console.warn('Supabase comment save failed:', result.error);
+        showToast('⚠️ Comment saved on this device only — sync failed. (' + (result.error.message || result.error.code || 'unknown') + ')');
       } else if (result.data) {
-        // Update the in-memory entry with the real Supabase ID
+        // Update the in-memory entry with the real Supabase ID so replies get the correct UUID
         var list = commentsCache[comment.event_id];
         if (list) {
           var idx = list.findIndex(function(c) { return c.id === comment.id; });
-          if (idx !== -1) list[idx] = Object.assign({}, comment, result.data);
+          if (idx !== -1) {
+            list[idx] = Object.assign({}, comment, result.data);
+            // Re-render so the delete button uses the real ID
+            renderInlineComments(comment.event_id);
+          }
         }
+        refreshUnreadBadge();
+        _refreshHistoryIfOpen();
       }
     })
     .catch(function(err) {
-      console.warn('Supabase comment save exception (stored locally):', err);
+      console.warn('Supabase comment save exception:', err);
+      showToast('⚠️ Comment saved on this device only — network error.');
     });
 }
 
